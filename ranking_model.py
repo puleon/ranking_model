@@ -253,8 +253,8 @@ class RankingModel(object):
 
     def fit_custom(self):
         self.init_metrics()
-        self.evaluate("valid")
-        self.evaluate("test")
+        self.evaluate(0, "valid")
+        self.evaluate(0, "test")
         self.save_metrics()
         self.save_losses()
         for i in range(1, self.epoch_num + 1):
