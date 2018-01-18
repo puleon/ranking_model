@@ -22,6 +22,7 @@ class RankingModel(object):
         self.run_type = params_dict.get("run_type")
         self.model_file = params_dict.get("model_file")
         self.pooling = params_dict.get("pooling")
+        self.recurrent = params_dict.get("recurrent")
         self.save_folder = params_dict['save_folder']
         self.max_sequence_length = params_dict['max_sequence_length']
         self.embedding_dim = params_dict['embedding_dim']
