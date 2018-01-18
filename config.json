@@ -26,6 +26,7 @@
   "type_of_weights": "shared",
   "type_of_loss": "triplet_hinge",
   "sampling": "random",
+  "recurrent": "bilstm",
   "pooling": "max",
   "metrics": ["rank_response", "rank_context",
     "r_at_1", "r_at_2", "r_at_5",

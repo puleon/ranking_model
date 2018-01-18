@@ -141,22 +141,27 @@ class RankingModel(object):
         elif self.pooling == "no":
             ret_seq = False
         inp = Input(shape=(input_dim,  self.embedding_dim,))
-        inp_drop = Dropout(self.ldrop_val)(inp)
+        out = Dropout(self.ldrop_val)(inp)
         ker_in = glorot_uniform(seed=self.seed)
         rec_in = Orthogonal(seed=self.seed)
-        bioutp = Bidirectional(LSTM(self.hidden_dim,
-                                    input_shape=(input_dim, self.embedding_dim,),
-                                    kernel_regularizer=None,
-                                    recurrent_regularizer=None,
-                                    bias_regularizer=None,
-                                    activity_regularizer=None,
-                                    recurrent_dropout=self.recdrop_val,
-                                    dropout=self.inpdrop_val,
-                                    kernel_initializer=ker_in,
-                                    recurrent_initializer=rec_in,
-                                    return_sequences=ret_seq), merge_mode='concat')(inp_drop)
-        bioutp = Dropout(self.dropout_val)(bioutp)
-        model = Model(inputs=inp, outputs=bioutp)
+        if self.recurrent == "bilstm" or self.recurrent is None:
+            out = Bidirectional(LSTM(self.hidden_dim,
+                                input_shape=(input_dim, self.embedding_dim,),
+                                recurrent_dropout=self.recdrop_val,
+                                dropout=self.inpdrop_val,
+                                kernel_initializer=ker_in,
+                                recurrent_initializer=rec_in,
+                                return_sequences=ret_seq), merge_mode='concat')(out)
+        elif self.recurrent == "lstm":
+            out = LSTM(self.hidden_dim,
+                       input_shape=(input_dim, self.embedding_dim,),
+                       recurrent_dropout=self.recdrop_val,
+                       dropout=self.inpdrop_val,
+                       kernel_initializer=ker_in,
+                       recurrent_initializer=rec_in,
+                       return_sequences=ret_seq)(out)
+        out = Dropout(self.dropout_val)(out)
+        model = Model(inputs=inp, outputs=out)
         return model
 
     def maxpool_cosine_score_model(self, input_dim):
