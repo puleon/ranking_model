@@ -1,4 +1,5 @@
 from keras.layers import Input, LSTM, Dropout, Lambda, Dense, Activation
+from keras.layers.merge import Dot
 from keras.models import Model
 from keras.layers.wrappers import Bidirectional
 from keras.optimizers import SGD, Adam
@@ -99,21 +100,6 @@ class RankingModel(object):
             self.evaluate("test")
             self.save_metrics()
 
-    def cosine(self, inputs):
-        """Define a function for a lambda layer of a model."""
-
-        input_a, input_b = inputs
-        input_a = Lambda(lambda x: K.l2_normalize(x, -1))(input_a)
-        input_b = Lambda(lambda x: K.l2_normalize(x, -1))(input_b)
-        output = Lambda(lambda x: K.batch_dot(x[0], x[1], axes=1))([input_a, input_b])
-        return output
-
-    def cosine_output_shape(self, shapes):
-        """Define an output shape of a lambda layer of a model."""
-
-        shape_a, shape_b = shapes
-        return shape_a[0], 1
-
     def score_difference(self, inputs):
         """Define a function for a lambda layer of a model."""
 
@@ -128,7 +114,7 @@ class RankingModel(object):
         input_a, input_b = inputs
         input_a = Dense(units=self.max_sequence_length, use_bias=False)(input_a)
         output = Lambda(lambda x: K.batch_dot(x[0], x[1], axes=1))([input_a, input_b])
-        #output = custom_layers.Bias()(output)
+        output = custom_layers.Bias()(output)
         output = Activation("sigmoid")(output)
         return output
 
@@ -191,8 +177,7 @@ class RankingModel(object):
                                 name="max_pooling_a")(lstm_a)
             lstm_b = Lambda(self.max_pooling, output_shape=self.max_pooling_output_shape,
                                 name="max_pooling_b")(lstm_b)
-        cosine = Lambda(self.cosine, output_shape=self.cosine_output_shape,
-                      name="similarity_network")([lstm_a, lstm_b])
+        cosine = Dot(normalize=True, axes=-1)([lstm_a, lstm_b])
         model = Model([input_a, input_b], cosine, name="score_model")
         return model
 
