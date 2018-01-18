@@ -19,6 +19,7 @@ import json
 class RankingModel(object):
 
     def __init__(self, params_dict):
+        self.epoch_num_valid = params_dict.get("epoch_num_valid")
         self.run_type = params_dict.get("run_type")
         self.model_file = params_dict.get("model_file")
         self.pooling = params_dict.get("pooling")
@@ -37,6 +38,9 @@ class RankingModel(object):
         self.type_of_weights = params_dict['type_of_weights']
         self.epoch_num = params_dict["epoch_num"]
         self.metrics = params_dict["metrics"]
+
+        if self.epoch_num_valid is None:
+            self.epoch_num_valid = 1
 
         if params_dict["type_of_loss"] == "triplet_hinge":
             self.loss = self.triplet_loss
@@ -252,12 +256,15 @@ class RankingModel(object):
         self.evaluate("valid")
         self.evaluate("test")
         self.save_metrics()
-        for i in range(self.epoch_num):
+        self.save_losses()
+        for i in range(1, self.epoch_num + 1):
             self.train()
-            self.evaluate("valid")
-            self.evaluate("test")
-            self.save_weights(i)
-            self.save_metrics()
+            self.save_losses()
+            if i % self.epoch_num_valid == 0:
+                self.evaluate(i, "valid")
+                self.evaluate(i, "test")
+                self.save_metrics()
+                self.save_weights(i)
 
     def train(self):
         print("Train:")
@@ -278,7 +285,7 @@ class RankingModel(object):
             print("val_loss:", val_loss)
         self.losses["val_loss"].append(np.mean(np.asarray(val_losses).astype(float)) if len(val_losses) > 0 else -1.0)
 
-    def evaluate(self, eval_type="valid"):
+    def evaluate(self, epoch, eval_type="valid"):
         if eval_type == "valid":
             steps = self.reader.valid_steps
             num_samples = self.reader.num_ranking_samples_valid + 1
@@ -296,9 +303,11 @@ class RankingModel(object):
             y_pred.append(self.score_model.predict_on_batch(x=el[0]))
 
         y_true = np.vstack([np.hstack(y_true[i * num_samples:
-                                                          (i + 1) * num_samples]) for i in range(steps)])
+                           (i + 1) * num_samples]) for i in range(steps)])
         y_pred = np.vstack([np.hstack(y_pred[i * num_samples:
-                                                          (i + 1) * num_samples]) for i in range(steps)])
+                           (i + 1) * num_samples]) for i in range(steps)])
+
+        metrics_buff["epoch"] = epoch
         for i in range(len(self.metrics)):
             metric_name = self.metrics[i]
             metric_value = self.metrics_functions[i](y_true, y_pred)
@@ -320,6 +329,8 @@ class RankingModel(object):
         self.test_metrics = {}
         self.losses = {"loss": [], "val_loss": []}
         for el in self.metrics:
+            self.val_metrics["epoch"] = []
+            self.test_metrics["epoch"] = []
             if el == "rank_response":
                 self.metrics_functions.append(custom_metrics.rank_response)
                 self.val_metrics[el] = []
@@ -357,9 +368,11 @@ class RankingModel(object):
                 self.val_metrics[el] = []
                 self.test_metrics[el] = []
 
-    def save_metrics(self):
+    def save_losses(self):
         with open(self.save_folder + '/losses.json', 'w') as outfile:
             json.dump(self.losses, outfile)
+
+    def save_metrics(self):
         with open(self.save_folder + '/valid_metrics.json', 'w') as outfile:
             json.dump(self.val_metrics, outfile)
         with open(self.save_folder + '/test_metrics.json', 'w') as outfile:

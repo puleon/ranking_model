@@ -514,8 +514,11 @@ class DataReader(object):
                 data = self.test_data
                 num_steps = self.test_steps
                 batch_size = self.test_batch_size
-        for i in range(num_steps):
-            context_response_data = data[i * batch_size:(i + 1) * batch_size]
+        for i in range(num_steps + 1):
+            if i < num_steps:
+                context_response_data = data[i * batch_size:(i + 1) * batch_size]
+            else:
+                context_response_data = data[i * batch_size:len(data)]
             data_indices = [el["id"] for el in context_response_data]
             context_data = [el["context"] for el in context_response_data]
             context = self.make_embeddings(context_data)

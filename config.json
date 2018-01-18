@@ -11,6 +11,7 @@
   "test_batch_size": 1024,
   "seed": 243,
   "epoch_num": 200,
+  "epoch_num_valid": 1,
   "learning_rate": 1e-1,
   "hidden_dim": 200,
   "recdrop_val": 0.0,
