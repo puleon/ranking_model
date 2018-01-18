@@ -173,15 +173,19 @@ class RankingModel(object):
         model = Model(inputs=inp, outputs=bioutp)
         return model
 
-    def maxpool_cosine_score_model_separate_weights(self, input_dim):
+    def maxpool_cosine_score_model(self, input_dim):
         """Define a model with bi-LSTM layers and without attention."""
-
         input_a = Input(shape=(input_dim, self.embedding_dim,))
         input_b = Input(shape=(input_dim, self.embedding_dim,))
-        lstm_layer_a = self.create_lstm_layer_max_pooling(self.max_sequence_length)
-        lstm_layer_b = self.create_lstm_layer_max_pooling(self.max_sequence_length)
-        lstm_a = lstm_layer_a(input_a)
-        lstm_b = lstm_layer_b(input_b)
+        if self.type_of_weights == "shared":
+            lstm_layer = self.create_lstm_layer_max_pooling(self.max_sequence_length)
+            lstm_a = lstm_layer(input_a)
+            lstm_b = lstm_layer(input_b)
+        elif self.type_of_weights == "separate":
+            lstm_layer_a = self.create_lstm_layer_max_pooling(self.max_sequence_length)
+            lstm_layer_b = self.create_lstm_layer_max_pooling(self.max_sequence_length)
+            lstm_a = lstm_layer_a(input_a)
+            lstm_b = lstm_layer_b(input_b)
         if self.pooling is None or self.pooling == "max":
             lstm_a = Lambda(self.max_pooling, output_shape=self.max_pooling_output_shape,
                                 name="max_pooling_a")(lstm_a)
@@ -192,32 +196,11 @@ class RankingModel(object):
         model = Model([input_a, input_b], cosine, name="score_model")
         return model
 
-    def maxpool_cosine_score_model_shared_weights(self, input_dim):
-        """Define a model with bi-LSTM layers and without attention."""
-
-        input_a = Input(shape=(input_dim, self.embedding_dim,))
-        input_b = Input(shape=(input_dim, self.embedding_dim,))
-        lstm_layer = self.create_lstm_layer_max_pooling(self.max_sequence_length)
-        lstm_a = lstm_layer(input_a)
-        lstm_b = lstm_layer(input_b)
-        if self.pooling is None or self.pooling == "max":
-            lstm_a = Lambda(self.max_pooling, output_shape=self.max_pooling_output_shape,
-                          name="max_pooling_a")(lstm_a)
-            lstm_b = Lambda(self.max_pooling, output_shape=self.max_pooling_output_shape,
-                          name="max_pooling_b")(lstm_b)
-        cosine = Lambda(self.cosine, output_shape=self.cosine_output_shape,
-                      name="similarity_network")([lstm_a, lstm_b])
-        model = Model([input_a, input_b], cosine, name="score_model")
-        return model
-
     def triplet_hinge_loss_model(self):
         question = Input(shape=(self.max_sequence_length, self.embedding_dim,))
         answer_positive = Input(shape=(self.max_sequence_length, self.embedding_dim,))
         answer_negative = Input(shape=(self.max_sequence_length, self.embedding_dim,))
-        if self.type_of_weights == "shared":
-            self.score_model = self.maxpool_cosine_score_model_shared_weights(self.max_sequence_length)
-        elif self.type_of_weights == "separate":
-            self.score_model = self.maxpool_cosine_score_model_separate_weights(self.max_sequence_length)
+        self.score_model = self.maxpool_cosine_score_model(self.max_sequence_length)
         score_positive = self.score_model([question, answer_positive])
         score_negative = self.score_model([question, answer_negative])
         score_diff = Lambda(self.score_difference, output_shape=self.score_difference_output_shape,
@@ -230,49 +213,33 @@ class RankingModel(object):
 
         return K.mean(K.maximum(self.margin - y_pred, 0.), axis=-1)
 
-    def maxpool_sigmoid_score_model_separate_weights(self, input_dim):
+    def maxpool_sigmoid_score_model(self, input_dim):
         """Define a model with bi-LSTM layers and without attention."""
-
         input_a = Input(shape=(input_dim, self.embedding_dim,))
         input_b = Input(shape=(input_dim, self.embedding_dim,))
-        lstm_layer_a = self.create_lstm_layer_max_pooling(self.max_sequence_length)
-        lstm_layer_b = self.create_lstm_layer_max_pooling(self.max_sequence_length)
-        lstm_last_a = lstm_layer_a(input_a)
-        lstm_last_b = lstm_layer_b(input_b)
-        max_pool_a = Lambda(self.max_pooling, output_shape=self.max_pooling_output_shape,
-                      name="max_pooling_a")(lstm_last_a)
-        max_pool_b = Lambda(self.max_pooling, output_shape=self.max_pooling_output_shape,
-                      name="max_pooling_b")(lstm_last_b)
+        if self.type_of_weights == "shared":
+            lstm_layer = self.create_lstm_layer_max_pooling(self.max_sequence_length)
+            lstm_a = lstm_layer(input_a)
+            lstm_b = lstm_layer(input_b)
+        elif self.type_of_weights == "separate":
+            lstm_layer_a = self.create_lstm_layer_max_pooling(self.max_sequence_length)
+            lstm_layer_b = self.create_lstm_layer_max_pooling(self.max_sequence_length)
+            lstm_a = lstm_layer_a(input_a)
+            lstm_b = lstm_layer_b(input_b)
+        if self.pooling is None or self.pooling == "max":
+            lstm_a = Lambda(self.max_pooling, output_shape=self.max_pooling_output_shape,
+                          name="max_pooling_a")(lstm_a)
+            lstm_b = Lambda(self.max_pooling, output_shape=self.max_pooling_output_shape,
+                          name="max_pooling_b")(lstm_b)
         sigmoid = Lambda(self.sigmoid, output_shape=self.sigmoid_output_shape,
-                      name="similarity_network")([max_pool_a, max_pool_b])
-        model = Model([input_a, input_b], sigmoid, name="score_model")
-        return model
-
-    def maxpool_sigmoid_score_model_shared_weights(self, input_dim):
-        """Define a model with bi-LSTM layers and without attention."""
-
-        input_a = Input(shape=(input_dim, self.embedding_dim,))
-        input_b = Input(shape=(input_dim, self.embedding_dim,))
-        lstm_layer = self.create_lstm_layer_max_pooling(self.max_sequence_length)
-        lstm_last_a = lstm_layer(input_a)
-        lstm_last_b = lstm_layer(input_b)
-        max_pool_a = Lambda(self.max_pooling, output_shape=self.max_pooling_output_shape,
-                      name="max_pooling_a")(lstm_last_a)
-        max_pool_b = Lambda(self.max_pooling, output_shape=self.max_pooling_output_shape,
-                      name="max_pooling_b")(lstm_last_b)
-        sigmoid = Lambda(self.sigmoid, output_shape=self.sigmoid_output_shape,
-                      name="similarity_network")([max_pool_a, max_pool_b])
+                      name="similarity_network")([lstm_a, lstm_b])
         model = Model([input_a, input_b], sigmoid, name="score_model")
         return model
 
     def binary_crossentropy_model(self):
         question = Input(shape=(self.max_sequence_length, self.embedding_dim,))
         answer = Input(shape=(self.max_sequence_length, self.embedding_dim,))
-        if self.type_of_weights == "shared":
-            self.score_model = self.maxpool_sigmoid_score_model_shared_weights(self.max_sequence_length)
-        else:
-            if self.type_of_weights == "separate":
-                self.score_model = self.maxpool_sigmoid_score_model_separate_weights(self.max_sequence_length)
+        self.score_model = self.maxpool_sigmoid_score_model(self.max_sequence_length)
         score = self.score_model([question, answer])
         model = Model([question, answer], score)
         return model
