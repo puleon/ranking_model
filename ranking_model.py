@@ -118,7 +118,7 @@ class RankingModel(object):
 
     def sigmoid(self, inputs):
         input_a, input_b = inputs
-        input_a = Dense(units=self.max_sequence_length, use_bias=False)(input_a)
+        input_a = Dense(units=2*self.hidden_dim, use_bias=False)(input_a)
         output = Lambda(lambda x: K.batch_dot(x[0], x[1], axes=1))([input_a, input_b])
         output = custom_layers.Bias()(output)
         output = Activation("sigmoid")(output)
@@ -133,12 +133,12 @@ class RankingModel(object):
     def max_pooling(self, input):
         """Define a function for a lambda layer of a model."""
 
-        return K.max(input, axis=-1, keepdims=False)
+        return K.max(input, axis=1, keepdims=False)
 
     def max_pooling_output_shape(self, shape):
         """Define an output shape of a lambda layer of a model."""
 
-        return shape[0], shape[1]
+        return shape[0], shape[2]
 
     def create_lstm_layer_max_pooling(self, input_dim):
         """Create a LSTM layer of a model."""
