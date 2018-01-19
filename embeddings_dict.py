@@ -32,6 +32,8 @@ class EmbeddingsDict(object):
         """Initialize the class according to given parameters."""
 
         self.tok2emb = {}
+        self.tok_index = {}
+        self.index = 0
         self.opt = copy.deepcopy(opt)
         self.embedding_dim = self.opt['embedding_dim']
         self.fasttext_model_file = self.opt['fasttext_model_file']
@@ -52,6 +54,9 @@ class EmbeddingsDict(object):
                         self.tok2emb[tok] = self.fasttext_model[tok]
                     except:
                         self.tok2emb[tok] = dummy_emb
+                if self.tok_index.get(tok) is None:
+                    self.tok_index[tok] = self.index
+                    self.index += 1
 
     def save_items(self):
         """Save the dictionary tok2emb to the file."""
@@ -81,7 +86,13 @@ class EmbeddingsDict(object):
                     for line in f:
                         values = line.rsplit(sep=' ', maxsplit=self.embedding_dim)
                         assert(len(values) == self.embedding_dim + 1)
-                        word = values[0]
+                        tok = values[0]
                         coefs = np.asarray(values[1:], dtype='float32')
-                        self.tok2emb[word] = coefs
+                        self.tok2emb[tok] = coefs
+
+    def create_embedding_matrix(self):
+        self.embedding_matrix = np.zeros((self.index, self.embedding_dim))
+        for tok, i in self.tok_index.items():
+            self.embedding_matrix[i] = self.tok2emb.get(tok)
+
 

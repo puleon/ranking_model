@@ -1,4 +1,4 @@
-from keras.layers import Input, LSTM, Dropout, Lambda, Dense, Activation
+from keras.layers import Input, LSTM, Dropout, Lambda, Dense, Activation, Embedding
 from keras.layers.merge import Dot
 from keras.models import Model
 from keras.layers.wrappers import Bidirectional
@@ -43,6 +43,10 @@ class RankingModel(object):
         if self.epoch_num_valid is None:
             self.epoch_num_valid = 1
 
+        self.score_model_by_name = None
+        self.score_model = None
+        self.reader = DataReader(self.score_model, params_dict)
+
         if params_dict["type_of_loss"] == "triplet_hinge":
             self.loss = self.triplet_loss
             self.obj_model = self.triplet_hinge_loss_model()
@@ -58,7 +62,6 @@ class RankingModel(object):
         if self.run_type == "train" or self.run_type is None:
             self.compile()
             self.score_model_by_name = self.obj_model.get_layer(name="score_model")
-            self.reader = DataReader(self.score_model, params_dict)
             self.callbacks = []
             cb = custom_callbacks.MetricsCallback(self.reader, self.obj_model,
                                                   self.score_model, self.score_model_by_name, params_dict)
@@ -95,7 +98,6 @@ class RankingModel(object):
             self.load()
             self.score_model = self.obj_model.get_layer(name="score_model")
             self.score_model_by_name = self.obj_model.get_layer(name="score_model")
-            self.reader = DataReader(self.score_model, params_dict)
             # cb = custom_callbacks.MetricsCallback(self.reader, self.obj_model,
             #                                       self.score_model, self.score_model_by_name,
             #                                       params_dict)
@@ -140,6 +142,17 @@ class RankingModel(object):
 
         return shape[0], shape[1]
 
+    def create_embedding_layer(self, input_dim):
+        inp = Input(shape=(input_dim,))
+        out = Embedding(self.reader.embdict.index,
+                        self.embedding_dim,
+                        weights=[self.reader.embdict.embedding_matrix],
+                        input_length=input_dim,
+                        trainable=True)(inp)
+        model = Model(inputs=inp, outputs=out, name="word_embedding_model")
+        return model
+
+
     def create_lstm_layer_max_pooling(self, input_dim):
         """Create a LSTM layer of a model."""
         if self.pooling is None or self.pooling == "max":
@@ -172,6 +185,7 @@ class RankingModel(object):
 
     def maxpool_cosine_score_model(self, input_dim):
         """Define a model with bi-LSTM layers and without attention."""
+
         input_a = Input(shape=(input_dim, self.embedding_dim,))
         input_b = Input(shape=(input_dim, self.embedding_dim,))
         if self.type_of_weights == "shared":
@@ -211,6 +225,7 @@ class RankingModel(object):
 
     def maxpool_sigmoid_score_model(self, input_dim):
         """Define a model with bi-LSTM layers and without attention."""
+
         input_a = Input(shape=(input_dim, self.embedding_dim,))
         input_b = Input(shape=(input_dim, self.embedding_dim,))
         if self.type_of_weights == "shared":
@@ -255,6 +270,7 @@ class RankingModel(object):
     def fit_custom(self):
         print("Node:", self.device_number)
         print("Save folder:", self.save_folder)
+        self.reader.get_model(self.score_model)
         self.init_metrics()
         self.evaluate(0, "valid")
         self.evaluate(0, "test")

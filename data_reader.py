@@ -4,6 +4,7 @@ import csv
 import nltk
 from nltk.tokenize import sent_tokenize, word_tokenize
 import json
+from keras.preprocessing.sequence import pad_sequences
 
 from embeddings_dict import EmbeddingsDict
 
@@ -69,6 +70,7 @@ class DataReader(object):
         self.subset_data()
         self.subset_data("valid")
         self.subset_data("test")
+        self.embdict.create_embedding_matrix()
         self.calculate_steps()
 
     def preprocess_data_ubuntu(self, data_type="train"):
@@ -149,6 +151,7 @@ class DataReader(object):
         self.embdict.add_items(answers)
         self.test_data = [{"id": el[0], "context": el[1][0], "response": el[1][1]}
                           for el in enumerate(zip(questions, answers))]
+        self.embdict.create_embedding_matrix()
         self.calculate_steps()
 
     def tokenize(self, sen_list):
@@ -230,6 +233,7 @@ class DataReader(object):
         self.preprocess_data_insurance('valid')
         self.preprocess_data_insurance('test')
         self.embdict.save_items()
+        self.embdict.create_embedding_matrix()
         self.subset_data('train')
         self.subset_data('valid')
         self.subset_data('test')
@@ -262,6 +266,21 @@ class DataReader(object):
         embeddings_batch = np.asarray(embeddings_batch)
         return embeddings_batch
 
+    def make_integers(self, sen_list):
+        if sen_list is None:
+            return None
+        integers_list = []
+        for sen in sen_list:
+            integers = []
+            for tok in sen:
+                integers.append(self.embdict.tok_index[tok])
+            integers_list.append(integers)
+        integers_list = pad_sequences(integers_list, maxlen=self.max_sequence_length)
+        return integers_list
+
+    def get_model(self, model):
+        self.score_model = model
+
     def batch_generator_train(self, data_type="train"):
         y0 = np.zeros(self.batch_size)
         y1 = np.ones(self.batch_size)
@@ -283,13 +302,13 @@ class DataReader(object):
             if self.sampling == "no_sampling":
                 if self.type_of_loss == "triplet_hinge":
                     negative_response_data = [el["negative_response"] for el in context_response_data]
-                    context = self.make_embeddings(context_data)
-                    response = self.make_embeddings(response_data)
-                    negative_response = self.make_embeddings(negative_response_data)
+                    context = self.make_integers(context_data)
+                    response = self.make_integers(response_data)
+                    negative_response = self.make_integers(negative_response_data)
                     yield ([context, response, negative_response], y0)
                 elif self.type_of_loss == "binary_crossentropy":
-                    context = self.make_embeddings(context_data)
-                    response = self.make_embeddings(response_data)
+                    context = self.make_integers(context_data)
+                    response = self.make_integers(response_data)
                     y = np.asarray([el["label"] for el in context_response_data])
                     yield ([context, response], y)
 
@@ -302,9 +321,9 @@ class DataReader(object):
 
             if negative_response_data is not None:
                 if self.type_of_loss == "triplet_hinge":
-                    context = self.make_embeddings(context_data)
-                    response = self.make_embeddings(response_data)
-                    negative_response = self.make_embeddings(negative_response_data)
+                    context = self.make_integers(context_data)
+                    response = self.make_integers(response_data)
+                    negative_response = self.make_integers(negative_response_data)
                     yield ([context, response, negative_response], y0)
                 elif self.type_of_loss == "binary_crossentropy":
                     batch_data = [list(el) for el in zip(context_data, response_data, y1)] +\
@@ -313,8 +332,8 @@ class DataReader(object):
                     context_data = [el[0] for el in batch_data]
                     response_data = [el[1] for el in batch_data]
                     y = [el[2] for el in batch_data]
-                    context = self.make_embeddings(context_data)
-                    response = self.make_embeddings(response_data)
+                    context = self.make_integers(context_data)
+                    response = self.make_integers(response_data)
                     y = np.asarray(y)
                     yield ([context, response], y)
 
@@ -363,9 +382,9 @@ class DataReader(object):
                     candidate = candidate_indices
                 candidate_data += [candidate]
             for i in range(self.num_negative_samples):
-                context_batch = self.make_embeddings(context_data[i])
-                response_batch = self.make_embeddings(response_data[i])
-                candidate_batch = self.make_embeddings(candidate_data[i])
+                context_batch = self.make_integers(context_data[i])
+                response_batch = self.make_integers(response_data[i])
+                candidate_batch = self.make_integers(candidate_data[i])
                 s_pos = self.score_model.predict_on_batch([context_batch, response_batch])
                 s_neg = self.score_model.predict_on_batch([context_batch, candidate_batch])
                 scores.append(s_pos - s_neg)
@@ -397,9 +416,9 @@ class DataReader(object):
             candidate_data = [candidate_data[i:-1:(self.batch_size - 1)] for i in range(self.batch_size-1)]
 
             for i in range(self.batch_size - 1):
-                context_batch = self.make_embeddings(context_data[i])
-                response_batch = self.make_embeddings(response_data[i])
-                candidate_batch = self.make_embeddings(candidate_data[i])
+                context_batch = self.make_integers(context_data[i])
+                response_batch = self.make_integers(response_data[i])
+                candidate_batch = self.make_integers(candidate_data[i])
                 s_pos = self.score_model.predict_on_batch([context_batch, response_batch])
                 s_neg = self.score_model.predict_on_batch([context_batch, candidate_batch])
                 scores.append(s_pos - s_neg)
@@ -446,9 +465,9 @@ class DataReader(object):
             response_data += [response]
             candidate_data += [context]
             for i in range(self.num_negative_samples + 1):
-                context_batch = self.make_embeddings(context_data[i])
-                response_batch = self.make_embeddings(response_data[i])
-                candidate_batch = self.make_embeddings(candidate_data[i])
+                context_batch = self.make_integers(context_data[i])
+                response_batch = self.make_integers(response_data[i])
+                candidate_batch = self.make_integers(candidate_data[i])
                 s_pos = self.score_model.predict_on_batch([context_batch, response_batch])
                 s_neg = self.score_model.predict_on_batch([context_batch, candidate_batch])
                 scores.append(s_pos - s_neg)
@@ -481,9 +500,9 @@ class DataReader(object):
             candidate_data = [candidate_data[i:-1:self.batch_size] for i in range(self.batch_size)]
 
             for i in range(self.batch_size):
-                context_batch = self.make_embeddings(context_data[i])
-                response_batch = self.make_embeddings(response_data[i])
-                candidate_batch = self.make_embeddings(candidate_data[i])
+                context_batch = self.make_integers(context_data[i])
+                response_batch = self.make_integers(response_data[i])
+                candidate_batch = self.make_integers(candidate_data[i])
                 s_pos = self.score_model.predict_on_batch([context_batch, response_batch])
                 s_neg = self.score_model.predict_on_batch([context_batch, candidate_batch])
                 scores.append(s_pos - s_neg)
@@ -524,10 +543,10 @@ class DataReader(object):
                 context_response_data = data[i * batch_size:len(data)]
             data_indices = [el["id"] for el in context_response_data]
             context_data = [el["context"] for el in context_response_data]
-            context = self.make_embeddings(context_data)
+            context = self.make_integers(context_data)
             response_data, y = self.create_rank_resp(data_indices, data_type)
             for el in zip(response_data, y):
-                response = self.make_embeddings(el[0])
+                response = self.make_integers(el[0])
                 yield ([context, response], el[1])
 
     def create_rank_resp(self, data_indices, data_type="valid"):
