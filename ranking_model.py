@@ -21,7 +21,7 @@ class RankingModel(object):
     def __init__(self, params_dict):
         self.epoch_num_valid = params_dict.get("epoch_num_valid")
         self.run_type = params_dict.get("run_type")
-        self.device_number = params_dict("device_number")
+        self.device_number = params_dict["device_number"]
         self.model_file = params_dict.get("model_file")
         self.pooling = params_dict.get("pooling")
         self.recurrent = params_dict.get("recurrent")
