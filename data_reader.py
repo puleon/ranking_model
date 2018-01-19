@@ -33,6 +33,9 @@ class DataReader(object):
         self.subset_len_train = params_dict.get("subset_len_train")
         self.subset_len_valid = params_dict.get("subset_len_valid")
         self.subset_len_test = params_dict.get("subset_len_test")
+        self.seed = params_dict.get("seed")
+
+        np.random.seed(self.seed)
 
         #nltk.download('punkt')
 
