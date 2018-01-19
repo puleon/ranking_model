@@ -21,6 +21,7 @@ class RankingModel(object):
     def __init__(self, params_dict):
         self.epoch_num_valid = params_dict.get("epoch_num_valid")
         self.run_type = params_dict.get("run_type")
+        self.device_number = params_dict("device_number")
         self.model_file = params_dict.get("model_file")
         self.pooling = params_dict.get("pooling")
         self.recurrent = params_dict.get("recurrent")
@@ -252,12 +253,15 @@ class RankingModel(object):
                                      callbacks=self.callbacks)
 
     def fit_custom(self):
+        print("Node:", self.device_number)
+        print("Save folder:", self.save_folder)
         self.init_metrics()
         self.evaluate(0, "valid")
         self.evaluate(0, "test")
         self.save_metrics()
         self.save_losses()
         for i in range(1, self.epoch_num + 1):
+            print("Epoch:", i)
             self.train()
             self.save_losses()
             if i % self.epoch_num_valid == 0:
@@ -315,10 +319,12 @@ class RankingModel(object):
             print(metric_name + ':', metric_value)
 
         if eval_type == "valid":
+            self.val_metrics["epoch"].append(metrics_buff["epoch"])
             for el in self.metrics:
                 self.val_metrics[el].append(metrics_buff[el])
             print(self.val_metrics)
         elif eval_type == "test":
+            self.test_metrics["epoch"].append(metrics_buff["epoch"])
             for el in self.metrics:
                 self.test_metrics[el].append(metrics_buff[el])
             print(self.test_metrics)
