@@ -1,7 +1,7 @@
 {
   "device_number": "0",
   "raw_dataset_path": "./build/",
-  "fasttext_model_file": "/home/pugachev/models_fasttext/wiki_en.bin",
+  "fasttext_model_file": "/home/pugachev/models_fasttext/wiki.en",
   "save_folder": "./rm",
   "fasttext_embeddings_dict": "rm_wiki.emb",
   "max_sequence_length": 200,
