@@ -35,6 +35,8 @@ class DataReader(object):
         self.subset_len_valid = params_dict.get("subset_len_valid")
         self.subset_len_test = params_dict.get("subset_len_test")
         self.seed = params_dict.get("seed")
+        self.padding = params_dict.get("padding")
+        self.truncating = params_dict.get("truncating")
 
         np.random.seed(self.seed)
 
@@ -259,9 +261,15 @@ class DataReader(object):
                 embeddings.append(self.embdict.tok2emb.get(tok))
             if len(sen) < self.max_sequence_length:
                 pads = [np.zeros(self.embedding_dim) for _ in range(self.max_sequence_length - len(sen))]
-                embeddings = pads + embeddings
+                if self.padding == "pre" or self.padding is None:
+                    embeddings = pads + embeddings
+                elif self.padding == "post":
+                    embeddings = embeddings + pads
             else:
-                embeddings = embeddings[-self.max_sequence_length:]
+                if self.padding == "pre" or self.padding is None:
+                    embeddings = embeddings[-self.max_sequence_length:]
+                elif self.padding == "post":
+                    embeddings = embeddings[:self.max_sequence_length]
             embeddings_batch.append(embeddings)
         embeddings_batch = np.asarray(embeddings_batch)
         return embeddings_batch
