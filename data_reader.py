@@ -262,9 +262,9 @@ class DataReader(object):
                 elif self.padding == "post":
                     embeddings = embeddings + pads
             else:
-                if self.padding == "pre" or self.padding is None:
+                if self.truncating== "pre" or self.truncating is None:
                     embeddings = embeddings[-self.max_sequence_length:]
-                elif self.padding == "post":
+                elif self.truncating == "post":
                     embeddings = embeddings[:self.max_sequence_length]
             embeddings_batch.append(embeddings)
         embeddings_batch = np.asarray(embeddings_batch)
