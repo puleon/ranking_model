@@ -17,6 +17,7 @@ import os
 import copy
 import numpy as np
 from gensim.models.wrappers import FastText
+from gensim.models import Word2Vec
 
 class EmbeddingsDict(object):
     """The class provides embeddings using fasttext model.
@@ -36,11 +37,16 @@ class EmbeddingsDict(object):
         self.index = 0
         self.opt = copy.deepcopy(opt)
         self.embedding_dim = self.opt['embedding_dim']
-        self.fasttext_model_file = self.opt['fasttext_model_file']
+        self.embeddings_model_file = self.opt['embeddings_model_file']
         self.load_items()
+        self.embeddings = self.opt["embeddings"]
 
-        self.fasttext_model = FastText.load_fasttext_format(self.fasttext_model_file)
-        assert(self.fasttext_model["hello"].shape[0] == self.embedding_dim),\
+        if self.embeddings == "fasttext":
+            self.embeddings_model = FastText.load_fasttext_format(self.embeddings_model_file)
+        elif self.embeddings == "word2vec":
+            self.embeddings_model = Word2Vec.load(self.embeddings_model_file)
+
+        assert(self.embeddings_model["I"].shape[0] == self.embedding_dim),\
             'The dimensionality of embeddings does not equal to the embedding_dim parameter. Exit.'
 
 
@@ -51,7 +57,7 @@ class EmbeddingsDict(object):
             for tok in sen:
                 if self.tok2emb.get(tok) is None:
                     try:
-                        self.tok2emb[tok] = self.fasttext_model[tok]
+                        self.tok2emb[tok] = self.embeddings_model[tok]
                     except:
                         self.tok2emb[tok] = dummy_emb
                 if self.tok_index.get(tok) is None:
@@ -60,7 +66,7 @@ class EmbeddingsDict(object):
 
     def save_items(self):
         """Save the dictionary tok2emb to the file."""
-        fname = self.opt.get('fasttext_embeddings_dict')
+        fname = self.opt.get('embeddings_dict')
         if fname is not None and not os.path.isfile(fname):
             f = open(fname, 'w')
             string = '\n'.join([el[0] + ' ' + self.emb2str(el[1]) for el in self.tok2emb.items()])
@@ -76,7 +82,7 @@ class EmbeddingsDict(object):
     def load_items(self):
         """Initialize embeddings from the file."""
 
-        fname = self.opt.get('fasttext_embeddings_dict')
+        fname = self.opt.get('embeddings_dict')
         if fname is not None:
             if not os.path.isfile(fname):
                 print('There is no %s file provided. Initializing new dictionary.' % fname)
