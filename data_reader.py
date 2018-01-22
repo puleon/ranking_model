@@ -283,7 +283,8 @@ class DataReader(object):
             for tok in sen:
                 integers.append(self.embdict.tok_index[tok])
             integers_list.append(integers)
-        integers_list = pad_sequences(integers_list, maxlen=self.max_sequence_length)
+        integers_list = pad_sequences(integers_list, maxlen=self.max_sequence_length,
+                                      padding=self.padding, truncating=self.truncating)
         return integers_list
 
     def get_model(self, model):
