@@ -47,7 +47,6 @@ class EmbeddingsDict(object):
         assert(self.embeddings_model["I"].shape[0] == self.embedding_dim),\
             'The dimensionality of embeddings does not equal to the embedding_dim parameter. Exit.'
 
-
     def add_items(self, sentence_li):
         """Add new items to the tok2emb dictionary from a given text."""
         dummy_emb = list(np.zeros(self.embedding_dim))
