@@ -189,7 +189,7 @@ class RankingModel(object):
             lstm_b = Lambda(self.max_pooling, output_shape=self.max_pooling_output_shape,
                                 name="max_pooling_b")(lstm_b)
         cosine = Dot(normalize=True, axes=-1)([lstm_a, lstm_b])
-        model = Model([input_a, input_b], cosine, name="score_model")
+        model = Model([input_a, input_b], cosine)
         return model
 
     def triplet_hinge_loss_model(self):
