@@ -197,8 +197,9 @@ class RankingModel(object):
         answer_positive = Input(shape=(self.max_sequence_length, self.embedding_dim,))
         answer_negative = Input(shape=(self.max_sequence_length, self.embedding_dim,))
         self.score_model = self.maxpool_cosine_score_model(self.max_sequence_length)
+        self.score_model_b = self.maxpool_cosine_score_model(self.max_sequence_length)
         score_positive = self.score_model([question, answer_positive])
-        score_negative = self.score_model([question, answer_negative])
+        score_negative = self.score_model_b([question, answer_negative])
         score_diff = Lambda(self.score_difference, output_shape=self.score_difference_output_shape,
                       name="score_diff")([score_positive, score_negative])
         model = Model([question, answer_positive, answer_negative], score_diff)
