@@ -387,7 +387,7 @@ class RankingModel(object):
 
     def save_weights(self, epoch):
         self.obj_model.save_weights(self.save_folder + '/obj_model_' + str(epoch) + '.h5')
-        self.score_model_by_name.save_weights(self.save_folder + '/score_model_by_name_' + str(epoch) + '.h5')
+        #self.score_model_by_name.save_weights(self.save_folder + '/score_model_by_name_' + str(epoch) + '.h5')
         self.score_model.save_weights(self.save_folder + '/score_model_' + str(epoch) + '.h5')
 
     def load(self):
