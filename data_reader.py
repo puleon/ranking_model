@@ -275,7 +275,12 @@ class DataReader(object):
                 questions.append(q.split(' '))
                 pos_answers.append(elj)
                 positive_answers_pool.append(pa_list)
-                nas = [el for el in na.split(' ') if el != elj]
+                nas = na.split(' ')
+                nas.remove(elj)
+                if len(nas) < 499:
+                    print('Error!')
+                    print(data_type)
+                    print(na)
                 neg_answers.append(nas)
         questions = [self.idx2tokens_insurance(el) for el in questions]
         pos_answers = [self.label2tokens_vocab[el] for el in pos_answers]
