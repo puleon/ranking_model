@@ -15,6 +15,9 @@ class DataReader(object):
         self.margin = params_dict['margin']
         self.type_of_loss = params_dict['type_of_loss']
         self.sampling = params_dict['sampling']
+        self.sample_candidates = params_dict.get('sample_candidates')
+        self.sample_candidates_valid = params_dict.get('sample_candidates_valid')
+        self.sample_candidates_test = params_dict.get('sample_candidates_test')
         self.raw_data_path = params_dict['raw_dataset_path']
         self.batch_size = params_dict['batch_size']
         self.max_sequence_length = params_dict['max_sequence_length']
@@ -43,11 +46,11 @@ class DataReader(object):
 
         if self.dataset_name == 'insurance':
             self.read_data_insurance()
-        else:
-            if self.dataset_name == 'twitter':
+        if self.dataset_name == 'insurance_v1':
+            self.read_data_insurance_v1()
+        elif self.dataset_name == 'twitter':
                 self.read_data_twitter()
-            else:
-                if self.dataset_name == 'ubuntu':
+        elif self.dataset_name == 'ubuntu':
                     self.read_data_ubuntu()
 
         print('Length of train data:', len(self.train_data))
@@ -163,23 +166,22 @@ class DataReader(object):
             sen_tokens_list.append(tokens)
         return sen_tokens_list
 
-    def build_vocabulary_insurance(self):
-        with open(self.raw_data_path + 'insurance/vocabulary') as f:
+    def build_vocabulary_insurance(self, fname):
+        with open(self.raw_data_path + fname) as f:
             data = f.readlines()
             self.vocabulary = {el.split('\t')[0]: el.split('\t')[1][:-1] for el in data}
 
-    def build_label2idx_vocabulary_insurance(self):
-        with open(self.raw_data_path + 'insurance/InsuranceQA.label2answer.token.encoded', 'r') as f:
+    def build_label2idx_vocabulary_insurance(self, fname):
+        with open(self.raw_data_path + fname, 'r') as f:
             data = f.readlines()
             self.label2idx_vocab = {el.split('\t')[0]: (el.split('\t')[1][:-1]).split(' ') for el in data}
 
     def build_label2tokens_vocabulary_insurance(self):
-        dict = {}
+        self.label2tokens_vocab = {}
         answers = []
         for el in self.label2idx_vocab.items():
-            dict[el[0]] = self.idx2tokens_insurance(el[1])
+            self.label2tokens_vocab[el[0]] = self.idx2tokens_insurance(el[1])
             answers.append(self.idx2tokens_insurance(el[1]))
-        self.label2tokens_vocab = dict
         self.presence_label2tokens = True
         self.embdict.add_items(answers)
 
@@ -188,7 +190,7 @@ class DataReader(object):
         return utterance_tokens
 
     def preprocess_data_insurance(self, data_type="train"):
-        file_path = self.raw_data_path + 'insurance/InsuranceQA.question.anslabel.token.500.pool.solr.' +\
+        file_path = self.raw_data_path + 'InsuranceQA.question.anslabel.token.500.pool.solr.' +\
                     data_type + '.encoded'
         questions = []
         pos_answers = []
@@ -215,22 +217,94 @@ class DataReader(object):
             self.negative_samples_pool = neg_answers
             self.train_data = data[:-10 * self.batch_size]
             self.valid_data_train = data[-10 * self.batch_size:]
-        else:
-            if data_type == "valid":
+        elif data_type == "valid":
                 self.ranking_samples_pool_valid = neg_answers
                 self.valid_data = data
-            else:
-                if data_type == "test":
-                    self.ranking_samples_pool_test = neg_answers
-                    self.test_data = data
+        elif data_type == "test":
+                self.ranking_samples_pool_test = neg_answers
+                self.test_data = data
 
     def read_data_insurance(self):
-        self.build_vocabulary_insurance()
-        self.build_label2idx_vocabulary_insurance()
+        self.build_vocabulary_insurance('vocabulary')
+        self.build_label2idx_vocabulary_insurance('InsuranceQA.label2answer.token.encoded')
         self.build_label2tokens_vocabulary_insurance()
         self.preprocess_data_insurance('train')
         self.preprocess_data_insurance('valid')
         self.preprocess_data_insurance('test')
+        self.embdict.save_items()
+        self.subset_data('train')
+        self.subset_data('valid')
+        self.subset_data('test')
+        self.calculate_steps()
+
+    def preprocess_data_insurance_v1_train(self):
+        self.positive_answers_pool = []
+        file_path = self.raw_data_path + 'question.train.token_idx.label'
+        questions = []
+        pos_answers = []
+        with open(file_path, 'r') as f:
+            data = f.readlines()
+        for eli in data:
+            eli = eli[:-1]
+            q, pa = eli.split('\t')
+            pa_list = pa.split(' ')
+            for elj in pa_list:
+                questions.append(q.split(' '))
+                pos_answers.append(elj)
+                self.positive_answers_pool.append(pa_list)
+        questions = [self.idx2tokens_insurance(el) for el in questions]
+        pos_answers = [self.label2tokens_vocab[el] for el in pos_answers]
+        self.embdict.add_items(questions)
+
+        self.train_data = [{"id": el[0], "context": el[1][0], "response": el[1][1]}
+                for el in enumerate(zip(questions, pos_answers))]
+
+    def preprocess_data_insurance_v1_valid_test(self, data_type="dev"):
+        file_path = self.raw_data_path + 'question.' + data_type + '.label.token_idx.pool'
+        positive_answers_pool = []
+        questions = []
+        pos_answers = []
+        neg_answers = []
+        with open(file_path, 'r') as f:
+            data = f.readlines()
+        for eli in data:
+            eli = eli[:-1]
+            pa, q, na = eli.split('\t')
+            pa_list = pa.split(' ')
+            for elj in pa_list:
+                questions.append(q.split(' '))
+                pos_answers.append(elj)
+                positive_answers_pool.append(pa_list)
+                nas = [el for el in na.split(' ') if el != elj]
+                neg_answers.append(nas)
+        questions = [self.idx2tokens_insurance(el) for el in questions]
+        pos_answers = [self.label2tokens_vocab[el] for el in pos_answers]
+        self.embdict.add_items(questions)
+
+        data = [{"id": el[0], "context": el[1][0], "response": el[1][1]}
+                for el in enumerate(zip(questions, pos_answers))]
+
+        if data_type == "dev":
+            self.positive_answers_pool_valid_train = positive_answers_pool
+            self.negative_samples_pool_valid_train = neg_answers
+            self.valid_data_train = data
+        elif data_type == "test1":
+            self.positive_answers_pool_valid = positive_answers_pool
+            self.ranking_samples_pool_valid = neg_answers
+            self.valid_data = data
+        elif data_type == "test2":
+            self.positive_answers_pool_test = positive_answers_pool
+            self.ranking_samples_pool_test = neg_answers
+            self.test_data = data
+
+    def read_data_insurance_v1(self):
+        self.build_vocabulary_insurance('vocabulary')
+        self.build_label2idx_vocabulary_insurance('answers.label.token_idx')
+        self.build_label2tokens_vocabulary_insurance()
+        self.preprocess_data_insurance_v1_train()
+        self.preprocess_data_insurance_v1_valid_test('dev')
+        self.preprocess_data_insurance_v1_valid_test('test1')
+        self.preprocess_data_insurance_v1_valid_test('test2')
         self.embdict.save_items()
         self.subset_data('train')
         self.subset_data('valid')
@@ -329,42 +403,59 @@ class DataReader(object):
     def create_neg_resp_rand(self, data_indices, data_type):
         if data_type == "train":
             data = self.train_data
-        else:
-            if data_type == "valid":
-                data = self.valid_data_train
-        if self.negative_samples_pool is not None:
-            candidate_lists = [self.negative_samples_pool[el] for el in data_indices]
-            candidate_indices = np.random.randint(0, self.num_negative_samples, self.batch_size)
+            negative_samples_pool = self.negative_samples_pool
+            positive_answers_pool = self.positive_answers_pool
+            sample_candidates = self.sample_candidates
+        elif data_type == "valid":
+            data = self.valid_data_train
+            negative_samples_pool = self.negative_samples_pool_valid_train
+            positive_answers_pool = self.positive_answers_pool_valid_train
+            sample_candidates = self.sample_candidates_valid
+        if sample_candidates == "pool":
+            candidate_lists = [negative_samples_pool[el] for el in data_indices]
+            candidate_indices = [np.random.randint(0, np.min([len(candidate_lists[i]),
+                                 self.num_negative_samples]), 1)[0]
+                                 for i in range(self.batch_size)]
             candidate_numbers = [candidate_lists[i][candidate_indices[i]] for i in range(self.batch_size)]
             if self.presence_label2tokens:
                 negative_response_data = [self.label2tokens_vocab[el] for el in candidate_numbers]
             else:
                 negative_response_data = candidate_numbers
-        else:
+        elif sample_candidates == "batch" or sample_candidates is None:
             candidate_lists = self.batch_size * [data_indices]
             candidate_indices = np.random.randint(0, self.batch_size, self.batch_size)
             candidate_numbers = [candidate_lists[i][candidate_indices[i]] for i in range(self.batch_size)]
             negative_response_data = [el["response"] for el in data if el["id"] in candidate_numbers]
+        elif sample_candidates == "global":
+            candidate_indices = []
+            for i in range(self.batch_size):
+                candidate_index = np.random.randint(1, len(self.label2tokens_vocab) + 1, 1)[0]
+                while str(candidate_index) in positive_answers_pool[data_indices[i]]:
+                    candidate_index = np.random.randint(1, len(self.label2tokens_vocab) + 1, 1)[0]
+                candidate_indices.append(str(candidate_index))
+            negative_response_data = [self.label2tokens_vocab[el] for el in candidate_indices]
         return negative_response_data
 
     def create_neg_resp_ns(self, data_indices, data_type):
         if data_type == "train":
             data = self.train_data
+            negative_samples_pool = self.negative_samples_pool
         else:
             if data_type == "valid":
                 data = self.valid_data_train
+                negative_samples_pool = self.negative_samples_pool_valid_train
         context_data = []
         response_data = []
         candidate_data = []
         negative_response_data = []
         scores = []
-        if self.negative_samples_pool is not None:
+        if negative_samples_pool is not None:
             for i in range(self.num_negative_samples):
                 context = [el["context"] for el in data if el["id"] in data_indices]
                 context_data += [context]
                 response = [el["response"] for el in data if el["id"] in data_indices]
                 response_data += [response]
-                candidate_indices = [self.negative_samples_pool[el][i] for el in data_indices]
+                candidate_indices = [negative_samples_pool[el][i] for el in data_indices]
                 if self.presence_label2tokens:
                     candidate = [self.label2tokens_vocab[el] for el in candidate_indices]
                 else:
@@ -430,21 +521,23 @@ class DataReader(object):
     def create_neg_resp_nswc(self, data_indices, data_type):
         if data_type == "train":
             data = self.train_data
+            negative_samples_pool = self.negative_samples_pool
         else:
             if data_type == "valid":
                 data = self.valid_data_train
+                negative_samples_pool = self.negative_samples_pool_valid_train
         context_data = []
         response_data = []
         candidate_data = []
         negative_response_data = []
         scores = []
-        if self.negative_samples_pool is not None:
+        if negative_samples_pool is not None:
             for i in range(self.num_negative_samples):
                 context = [el["context"] for el in data if el["id"] in data_indices]
                 context_data += [context]
                 response = [el["response"] for el in data if el["id"] in data_indices]
                 response_data += [response]
-                candidate_indices = [self.negative_samples_pool[el][i] for el in data_indices]
+                candidate_indices = [negative_samples_pool[el][i] for el in data_indices]
                 if self.presence_label2tokens:
                     candidate = [self.label2tokens_vocab[el] for el in candidate_indices]
                 else:
@@ -533,10 +626,10 @@ class DataReader(object):
             data_indices = [el["id"] for el in context_response_data]
             context_data = [el["context"] for el in context_response_data]
             context = self.make_embeddings(context_data)
-            response_data, y = self.create_rank_resp(data_indices, data_type)
-            for el in zip(response_data, y):
+            response_data, y, y_set = self.create_rank_resp(data_indices, data_type)
+            for el in zip(response_data, y, y_set):
                 response = self.make_embeddings(el[0])
-                yield ([context, response], el[1])
+                yield ([context, response], el[1], el[2])
 
     def create_rank_resp(self, data_indices, data_type="valid"):
         if data_type == "valid":
@@ -545,13 +638,16 @@ class DataReader(object):
             ranking_length = self.num_ranking_samples_valid
             batch_size = self.val_batch_size
             pool = self.ranking_samples_pool_valid
+            positive_pool = self.positive_answers_pool_valid
         elif data_type == "test":
             data = self.test_data
             data_length = len(data)
             ranking_length = self.num_ranking_samples_test
             batch_size = self.test_batch_size
             pool = self.ranking_samples_pool_test
-        if pool is not None:
+            positive_pool = self.positive_answers_pool_test
+        if self.sample_candidates_test == "pool":
+            y_set = (ranking_length + 1) * [[np.arange(len(positive_pool[el])) for el in data_indices]]
             y = (ranking_length + 1) * [np.zeros(batch_size)]
             response_data = [[el["response"] for el in data if el['id'] in data_indices]]
             pool_indices = np.arange(ranking_length)
@@ -562,7 +658,7 @@ class DataReader(object):
                 else:
                     response = response_indices
                 response_data.append(response)
-        else:
+        elif self.sample_candidates_test == "global" or self.sample_candidates_test is None:
             y = (data_length + 1) * [np.zeros(batch_size)]
             response_data = []
             for i in range(batch_size):
@@ -572,4 +668,4 @@ class DataReader(object):
             response_data = [response_data[i:-1:(data_length-1)] for i in range(data_length-1)]
             response_data = [el["response"] for el in data if el["id"] in data_indices] + response_data
             response_data += [el["context"] for el in data if el["id"] in data_indices]
-        return response_data, y
+        return response_data, y, y_set

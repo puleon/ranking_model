@@ -300,21 +300,34 @@ class RankingModel(object):
             generator = self.reader.batch_generator_test("test")
 
         metrics_buff = {}
+        y_set = []
         y_true = []
         y_pred = []
+        i = 0
         for el in generator:
+            print(i)
+            if i % num_samples == 0:
+                 y_set += el[2]
+            print(len(y_set))
+
             y_true.append(np.expand_dims(el[1], axis=1))
             y_pred.append(self.score_model.predict_on_batch(x=el[0]))
+            i += 1
 
         y_true = np.vstack([np.hstack(y_true[i * num_samples:
                            (i + 1) * num_samples]) for i in range(steps)])
         y_pred = np.vstack([np.hstack(y_pred[i * num_samples:
                            (i + 1) * num_samples]) for i in range(steps)])
+        print(y_pred.shape)
+        print(len(y_set))
 
         metrics_buff["epoch"] = epoch
         for i in range(len(self.metrics)):
             metric_name = self.metrics[i]
-            metric_value = self.metrics_functions[i](y_true, y_pred)
+            if metric_name != "rank_response_set" and metric_name != "r_at_1_set":
+                metric_value = self.metrics_functions[i](y_true, y_pred)
+            else:
+                metric_value = self.metrics_functions[i](y_set, y_pred)
             metrics_buff[metric_name] = metric_value
             print(metric_name + ':', metric_value)
 
@@ -341,12 +354,20 @@ class RankingModel(object):
                 self.metrics_functions.append(custom_metrics.rank_response)
                 self.val_metrics[el] = []
                 self.test_metrics[el] = []
+            if el == "rank_response_set":
+                self.metrics_functions.append(custom_metrics.rank_response_set)
+                self.val_metrics[el] = []
+                self.test_metrics[el] = []
             if el == "rank_context":
                 self.metrics_functions.append(custom_metrics.rank_context)
                 self.val_metrics[el] = []
                 self.test_metrics[el] = []
             if el == "r_at_1":
                 self.metrics_functions.append(custom_metrics.r_at_1)
+                self.val_metrics[el] = []
+                self.test_metrics[el] = []
+            if el == "r_at_1_set":
+                self.metrics_functions.append(custom_metrics.r_at_1_set)
                 self.val_metrics[el] = []
                 self.test_metrics[el] = []
             if el == "r_at_2":
