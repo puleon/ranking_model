@@ -305,11 +305,8 @@ class RankingModel(object):
         y_pred = []
         i = 0
         for el in generator:
-            print(i)
             if i % num_samples == 0:
                  y_set += el[2]
-            print(len(y_set))
-
             y_true.append(np.expand_dims(el[1], axis=1))
             y_pred.append(self.score_model.predict_on_batch(x=el[0]))
             i += 1
