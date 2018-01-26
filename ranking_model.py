@@ -315,8 +315,6 @@ class RankingModel(object):
                            (i + 1) * num_samples]) for i in range(steps)])
         y_pred = np.vstack([np.hstack(y_pred[i * num_samples:
                            (i + 1) * num_samples]) for i in range(steps)])
-        print(y_pred.shape)
-        print(len(y_set))
 
         metrics_buff["epoch"] = epoch
         for i in range(len(self.metrics)):

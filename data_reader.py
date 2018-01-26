@@ -350,11 +350,11 @@ class DataReader(object):
         y1 = np.ones(self.batch_size)
         if data_type == "train":
             data = self.train_data
+            np.random.shuffle(data)
             steps = self.train_steps
         elif data_type == "valid":
             data = self.valid_data_train
             steps = self.valid_steps_train
-        #np.random.shuffle(self.data)
         # while 1:
         for i in range(steps):
             context_response_data = data[i * self.batch_size:(i + 1) * self.batch_size]
