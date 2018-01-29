@@ -34,6 +34,7 @@ class RankingModel(object):
         self.inpdrop_val = params_dict['inpdrop_val']
         self.ldrop_val = params_dict['ldrop_val']
         self.dropout_val = params_dict['dropout_val']
+        self.maxpool_drop_val = params_dict["maxpool_drop_val"]
         self.learning_rate = params_dict['learning_rate']
         self.margin = params_dict['margin']
         self.type_of_weights = params_dict['type_of_weights']
@@ -205,6 +206,15 @@ class RankingModel(object):
                                 name="max_pooling_a")(lstm_a)
             lstm_b = Lambda(self.max_pooling, output_shape=self.max_pooling_output_shape,
                                 name="max_pooling_b")(lstm_b)
+            if self.type_of_weights == "shared":
+                dropout = Dropout(self.maxpool_drop_val)
+                lstm_a = dropout(lstm_a)
+                lstm_b = dropout(lstm_b)
+            elif self.type_of_weights == "separate":
+                dropout_a = Dropout(self.maxpool_drop_val)
+                dropout_b = Dropout(self.maxpool_drop_val)
+                lstm_a = dropout_a(lstm_a)
+                lstm_b = dropout_b(lstm_b)
         cosine = Dot(normalize=True, axes=-1)([lstm_a, lstm_b])
         model = Model([input_a, input_b], cosine, name="score_model")
         return model

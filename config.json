@@ -21,6 +21,7 @@
   "inpdrop_val": 0.0,
   "ldrop_val": 0.0,
   "dropout_val": 0.0,
+  "maxpool_drop_val": 0.0,
   "margin": 0.2,
   "num_negative_samples": 500,
   "num_ranking_samples_valid": 499,
