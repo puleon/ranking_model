@@ -30,6 +30,7 @@ class RankingModel(object):
         self.embedding_dim = params_dict['embedding_dim']
         self.seed = params_dict['seed']
         self.hidden_dim = params_dict['hidden_dim']
+        self.emb_drop_val = params_dict['emb_drop_val']
         self.recdrop_val = params_dict['recdrop_val']
         self.inpdrop_val = params_dict['inpdrop_val']
         self.ldrop_val = params_dict['ldrop_val']
@@ -189,14 +190,25 @@ class RankingModel(object):
 
         input_a = Input(shape=(input_dim,))
         input_b = Input(shape=(input_dim,))
-        embedding_layer = self.create_embedding_layer(self.max_sequence_length)
-        emb_a = embedding_layer(input_a)
-        emb_b = embedding_layer(input_b)
         if self.type_of_weights == "shared":
+            drop_layer = Dropout(self.emb_drop_val)
+            drop_a = drop_layer(input_a)
+            drop_b = drop_layer(input_b)
+            embedding_layer = self.create_embedding_layer(self.max_sequence_length)
+            emb_a = embedding_layer(drop_a)
+            emb_b = embedding_layer(drop_b)
             lstm_layer = self.create_lstm_layer_max_pooling(self.max_sequence_length)
             lstm_a = lstm_layer(emb_a)
             lstm_b = lstm_layer(emb_b)
         elif self.type_of_weights == "separate":
+            drop_layer_a = Dropout(self.emb_drop_val)
+            drop_layer_b = Dropout(self.emb_drop_val)
+            drop_a = drop_layer_a(input_a)
+            drop_b = drop_layer_b(input_b)
+            embedding_layer_a = self.create_embedding_layer(self.max_sequence_length)
+            embedding_layer_b = self.create_embedding_layer(self.max_sequence_length)
+            emb_a = embedding_layer_a(drop_a)
+            emb_b = embedding_layer_b(drop_b)
             lstm_layer_a = self.create_lstm_layer_max_pooling(self.max_sequence_length)
             lstm_layer_b = self.create_lstm_layer_max_pooling(self.max_sequence_length)
             lstm_a = lstm_layer_a(emb_a)
