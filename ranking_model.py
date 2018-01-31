@@ -1,4 +1,4 @@
-from keras.layers import Input, LSTM, Dropout, Lambda, Dense, Activation, Embedding
+from keras.layers import Input, LSTM, Dropout, Lambda, Dense, Activation, Embedding, Masking
 from keras.layers.merge import Dot
 from keras.models import Model
 from keras.layers.wrappers import Bidirectional
@@ -24,6 +24,7 @@ class RankingModel(object):
         self.device_number = params_dict["device_number"]
         self.model_file = params_dict.get("model_file")
         self.pooling = params_dict.get("pooling")
+        self.masking = params_dict.get("masking")
         self.recurrent = params_dict.get("recurrent")
         self.save_folder = params_dict['save_folder']
         self.max_sequence_length = params_dict['max_sequence_length']
@@ -45,13 +46,12 @@ class RankingModel(object):
         if self.epoch_num_valid is None:
             self.epoch_num_valid = 1
 
-        self.score_model_by_name = None
         self.score_model = None
         self.reader = DataReader(self.score_model, params_dict)
 
         if params_dict["type_of_loss"] == "triplet_hinge":
             self.loss = self.triplet_loss
-            self.obj_model = self.triplet_hinge_loss_model()
+            self.obj_model = self.triplet_hinge_loss_model_1()
         elif params_dict["type_of_loss"] == "binary_crossentropy":
             self.loss = losses.binary_crossentropy
             self.obj_model = self.binary_crossentropy_model()
@@ -63,10 +63,10 @@ class RankingModel(object):
 
         if self.run_type == "train" or self.run_type is None:
             self.compile()
-            self.score_model_by_name = self.obj_model.get_layer(name="score_model")
+            self.score_model = self.obj_model.get_layer(name="score_model")
             self.callbacks = []
             cb = custom_callbacks.MetricsCallback(self.reader, self.obj_model,
-                                                  self.score_model, self.score_model_by_name, params_dict)
+                                                  self.score_model, self.score_model, params_dict)
             self.callbacks.append(cb)
             for el in params_dict["callbacks"]:
                 if el == "ModelCheckpoint":
@@ -99,9 +99,8 @@ class RankingModel(object):
             self.compile()
             self.load()
             self.score_model = self.obj_model.get_layer(name="score_model")
-            self.score_model_by_name = self.obj_model.get_layer(name="score_model")
             # cb = custom_callbacks.MetricsCallback(self.reader, self.obj_model,
-            #                                       self.score_model, self.score_model_by_name,
+            #                                       self.score_model, self.score_model,
             #                                       params_dict)
             #cb.on_train_begin()
             #cb.on_epoch_begin(1)
@@ -235,13 +234,116 @@ class RankingModel(object):
         question = Input(shape=(self.max_sequence_length,))
         answer_positive = Input(shape=(self.max_sequence_length,))
         answer_negative = Input(shape=(self.max_sequence_length,))
-        self.score_model = self.maxpool_cosine_score_model(self.max_sequence_length)
-        score_positive = self.score_model([question, answer_positive])
-        score_negative = self.score_model([question, answer_negative])
+        if self.masking == "yes":
+            if self.type_of_weights == "shared":
+                masking_layer = Masking(mask_value=0., input_shape=(self.max_sequence_length,))
+                que = masking_layer(question)
+                a_pos = masking_layer(answer_positive)
+                a_neg = masking_layer(answer_negative)
+            elif self.type_of_weights == "separate":
+                masking_layer_q = Masking(mask_value=0., input_shape=(self.max_sequence_length,))
+                masking_layer_a = Masking(mask_value=0., input_shape=(self.max_sequence_length,))
+                que = masking_layer_q(question)
+                a_pos = masking_layer_a(answer_positive)
+                a_neg = masking_layer_a(answer_negative)
+        elif self.masking is None or self.masking == "no":
+            que = question
+            a_pos = answer_positive
+            a_neg = answer_negative
+        score_model = self.maxpool_cosine_score_model(self.max_sequence_length)
+        score_positive = score_model([que, a_pos])
+        score_negative = score_model([que, a_neg])
         score_diff = Lambda(self.score_difference, output_shape=self.score_difference_output_shape,
                       name="score_diff")([score_positive, score_negative])
         model = Model([question, answer_positive, answer_negative], score_diff)
         return model
+
+    def triplet_hinge_loss_model_1(self):
+        question = Input(shape=(self.max_sequence_length,))
+        answer_positive = Input(shape=(self.max_sequence_length,))
+        answer_negative = Input(shape=(self.max_sequence_length,))
+        if self.masking == "yes":
+            if self.type_of_weights == "shared":
+                masking_layer = Masking(mask_value=0., input_shape=(self.max_sequence_length,))
+                que = masking_layer(question)
+                a_pos = masking_layer(answer_positive)
+                a_neg = masking_layer(answer_negative)
+            elif self.type_of_weights == "separate":
+                masking_layer_q = Masking(mask_value=0., input_shape=(self.max_sequence_length,))
+                masking_layer_a = Masking(mask_value=0., input_shape=(self.max_sequence_length,))
+                que = masking_layer_q(question)
+                a_pos = masking_layer_a(answer_positive)
+                a_neg = masking_layer_a(answer_negative)
+        elif self.masking is None or self.masking == "no":
+            que = question
+            a_pos = answer_positive
+            a_neg = answer_negative
+        if self.type_of_weights == "shared":
+            drop_layer = Dropout(self.emb_drop_val)
+            drop_que = drop_layer(que)
+            drop_apos = drop_layer(a_pos)
+            drop_aneg = drop_layer(a_neg)
+            embedding_layer = Embedding(self.reader.embdict.index,
+                            self.embedding_dim,
+                            weights=[self.reader.embdict.embedding_matrix],
+                            input_length=self.max_sequence_length,
+                            trainable=True)
+            emb_que = embedding_layer(drop_que)
+            emb_apos = embedding_layer(drop_apos)
+            emb_aneg = embedding_layer(drop_aneg)
+            lstm_layer = self.create_lstm_layer_max_pooling(self.max_sequence_length)
+            lstm_que = lstm_layer(emb_que)
+            lstm_apos = lstm_layer(emb_apos)
+            lstm_aneg = lstm_layer(emb_aneg)
+        elif self.type_of_weights == "separate":
+            drop_layer_q = Dropout(self.emb_drop_val)
+            drop_layer_a = Dropout(self.emb_drop_val)
+            drop_que = drop_layer_q(que)
+            drop_apos = drop_layer_a(a_pos)
+            drop_aneg = drop_layer_a(a_neg)
+            embedding_layer_q = Embedding(self.reader.embdict.index,
+                            self.embedding_dim,
+                            weights=[self.reader.embdict.embedding_matrix],
+                            input_length=self.max_sequence_length,
+                            trainable=True)
+            embedding_layer_a = Embedding(self.reader.embdict.index,
+                            self.embedding_dim,
+                            weights=[self.reader.embdict.embedding_matrix],
+                            input_length=self.max_sequence_length,
+                            trainable=True)
+            emb_que = embedding_layer_a(drop_que)
+            emb_apos = embedding_layer_q(drop_apos)
+            emb_aneg = embedding_layer_a(drop_aneg)
+            lstm_layer_q = self.create_lstm_layer_max_pooling(self.max_sequence_length)
+            lstm_layer_a = self.create_lstm_layer_max_pooling(self.max_sequence_length)
+            lstm_que = lstm_layer_q(emb_que)
+            lstm_apos = lstm_layer_a(emb_apos)
+            lstm_aneg = lstm_layer_a(emb_aneg)
+        if self.pooling is None or self.pooling == "max":
+            lstm_que = Lambda(self.max_pooling, output_shape=self.max_pooling_output_shape,
+                                name="max_pooling_q")(lstm_que)
+            lstm_apos = Lambda(self.max_pooling, output_shape=self.max_pooling_output_shape,
+                                name="max_pooling_p")(lstm_apos)
+            lstm_aneg = Lambda(self.max_pooling, output_shape=self.max_pooling_output_shape,
+                                name="max_pooling_n")(lstm_aneg)
+            if self.type_of_weights == "shared":
+                dropout = Dropout(self.maxpool_drop_val)
+                lstm_que = dropout(lstm_que)
+                lstm_apos = dropout(lstm_apos)
+                lstm_aneg = dropout(lstm_aneg)
+            elif self.type_of_weights == "separate":
+                dropout_q = Dropout(self.maxpool_drop_val)
+                dropout_a = Dropout(self.maxpool_drop_val)
+                lstm_que = dropout_q(lstm_que)
+                lstm_apos = dropout_a(lstm_apos)
+                lstm_aneg = dropout_a(lstm_aneg)
+        score_positive = Dot(normalize=True, axes=-1, name="score_model")([lstm_que, lstm_apos])
+        score_negative = Dot(normalize=True, axes=-1)([lstm_que, lstm_aneg])
+        score_diff = Lambda(self.score_difference, output_shape=self.score_difference_output_shape,
+                      name="score_diff")([score_positive, score_negative])
+        model = Model([question, answer_positive, answer_negative], score_diff)
+        return model
+
 
     def triplet_loss(self, y_true, y_pred):
         """Triplet loss function"""
@@ -446,7 +548,6 @@ class RankingModel(object):
 
     def save_weights(self, epoch):
         self.obj_model.save_weights(self.save_folder + '/obj_model_' + str(epoch) + '.h5')
-        self.score_model_by_name.save_weights(self.save_folder + '/score_model_by_name_' + str(epoch) + '.h5')
         self.score_model.save_weights(self.save_folder + '/score_model_' + str(epoch) + '.h5')
 
     def load(self):

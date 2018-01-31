@@ -37,6 +37,7 @@
   "sample_candidates_test": "pool",
   "recurrent": "bilstm",
   "pooling": "max",
+  "masking": "yes",
   "metrics": ["rank_response", "rank_context",
     "r_at_1", "r_at_2", "r_at_5",
     "map_at_1_full", "map_at_1_relevant",
