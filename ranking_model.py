@@ -46,6 +46,13 @@ class RankingModel(object):
         if self.epoch_num_valid is None:
             self.epoch_num_valid = 1
 
+        self.mask_zero = False
+
+        if self.pooling is None or self.pooling == "max":
+            self.return_sequences = True
+        elif self.pooling == "no":
+            self.return_sequences = False
+
         self.score_model = None
         self.reader = DataReader(self.score_model, params_dict)
 
@@ -144,12 +151,19 @@ class RankingModel(object):
         return shape[0], shape[2]
 
     def create_embedding_layer(self, input_dim):
+        if self.masking == 'yes':
+            self.mask_zero = True
+            index = self.reader.embdict.index
+        elif self.masking == 'no' or self.masking is None:
+            index = self.reader.embdict.index
+
         inp = Input(shape=(input_dim,))
-        out = Embedding(self.reader.embdict.index,
+        out = Embedding(index,
                         self.embedding_dim,
                         weights=[self.reader.embdict.embedding_matrix],
                         input_length=input_dim,
-                        trainable=True)(inp)
+                        trainable=True,
+                        mask_zero=self.mask_zero)(inp)
         model = Model(inputs=inp, outputs=out, name="word_embedding_model")
         return model
 
@@ -181,7 +195,7 @@ class RankingModel(object):
                        recurrent_initializer=rec_in,
                        return_sequences=ret_seq)(out)
         out = Dropout(self.dropout_val)(out)
-        model = Model(inputs=inp, outputs=out)
+        model = Model(inputs=inp, outputs=out, name='lstm_layer')
         return model
 
     def maxpool_cosine_score_model(self, input_dim):
@@ -234,25 +248,9 @@ class RankingModel(object):
         question = Input(shape=(self.max_sequence_length,))
         answer_positive = Input(shape=(self.max_sequence_length,))
         answer_negative = Input(shape=(self.max_sequence_length,))
-        if self.masking == "yes":
-            if self.type_of_weights == "shared":
-                masking_layer = Masking(mask_value=0., input_shape=(self.max_sequence_length,))
-                que = masking_layer(question)
-                a_pos = masking_layer(answer_positive)
-                a_neg = masking_layer(answer_negative)
-            elif self.type_of_weights == "separate":
-                masking_layer_q = Masking(mask_value=0., input_shape=(self.max_sequence_length,))
-                masking_layer_a = Masking(mask_value=0., input_shape=(self.max_sequence_length,))
-                que = masking_layer_q(question)
-                a_pos = masking_layer_a(answer_positive)
-                a_neg = masking_layer_a(answer_negative)
-        elif self.masking is None or self.masking == "no":
-            que = question
-            a_pos = answer_positive
-            a_neg = answer_negative
         score_model = self.maxpool_cosine_score_model(self.max_sequence_length)
-        score_positive = score_model([que, a_pos])
-        score_negative = score_model([que, a_neg])
+        score_positive = score_model([question, answer_positive])
+        score_negative = score_model([question, answer_negative])
         score_diff = Lambda(self.score_difference, output_shape=self.score_difference_output_shape,
                       name="score_diff")([score_positive, score_negative])
         model = Model([question, answer_positive, answer_negative], score_diff)
@@ -262,22 +260,25 @@ class RankingModel(object):
         question = Input(shape=(self.max_sequence_length,))
         answer_positive = Input(shape=(self.max_sequence_length,))
         answer_negative = Input(shape=(self.max_sequence_length,))
-        if self.masking == "yes":
-            if self.type_of_weights == "shared":
-                masking_layer = Masking(mask_value=0., input_shape=(self.max_sequence_length,))
-                que = masking_layer(question)
-                a_pos = masking_layer(answer_positive)
-                a_neg = masking_layer(answer_negative)
-            elif self.type_of_weights == "separate":
-                masking_layer_q = Masking(mask_value=0., input_shape=(self.max_sequence_length,))
-                masking_layer_a = Masking(mask_value=0., input_shape=(self.max_sequence_length,))
-                que = masking_layer_q(question)
-                a_pos = masking_layer_a(answer_positive)
-                a_neg = masking_layer_a(answer_negative)
-        elif self.masking is None or self.masking == "no":
-            que = question
-            a_pos = answer_positive
-            a_neg = answer_negative
+        # if self.masking == "yes":
+        #     if self.type_of_weights == "shared":
+        #         masking_layer = Masking(mask_value=0., input_shape=(self.max_sequence_length,))
+        #         que = masking_layer(question)
+        #         a_pos = masking_layer(answer_positive)
+        #         a_neg = masking_layer(answer_negative)
+        #     elif self.type_of_weights == "separate":
+        #         masking_layer_q = Masking(mask_value=0., input_shape=(self.max_sequence_length,))
+        #         masking_layer_a = Masking(mask_value=0., input_shape=(self.max_sequence_length,))
+        #         que = masking_layer_q(question)
+        #         a_pos = masking_layer_a(answer_positive)
+        #         a_neg = masking_layer_a(answer_negative)
+        # elif self.masking is None or self.masking == "no":
+        #     que = question
+        #     a_pos = answer_positive
+        #     a_neg = answer_negative
+        que = question
+        a_pos = answer_positive
+        a_neg = answer_negative
         if self.type_of_weights == "shared":
             drop_layer = Dropout(self.emb_drop_val)
             drop_que = drop_layer(que)
@@ -287,11 +288,19 @@ class RankingModel(object):
                             self.embedding_dim,
                             weights=[self.reader.embdict.embedding_matrix],
                             input_length=self.max_sequence_length,
-                            trainable=True)
+                            trainable=True,
+                            mask_zero=True)
             emb_que = embedding_layer(drop_que)
             emb_apos = embedding_layer(drop_apos)
             emb_aneg = embedding_layer(drop_aneg)
-            lstm_layer = self.create_lstm_layer_max_pooling(self.max_sequence_length)
+            if self.recurrent == "bilstm" or self.recurrent is None:
+                lstm_layer = Bidirectional(LSTM(self.hidden_dim,
+                                         input_shape=(self.max_sequence_length, self.embedding_dim,),
+                                         return_sequences=self.return_sequences), merge_mode='concat')
+            elif self.recurrent == "lstm":
+                lstm_layer = LSTM(self.hidden_dim,
+                           input_shape=(self.max_sequence_length, self.embedding_dim,),
+                           return_sequences=self.return_sequences)
             lstm_que = lstm_layer(emb_que)
             lstm_apos = lstm_layer(emb_apos)
             lstm_aneg = lstm_layer(emb_aneg)
@@ -305,17 +314,34 @@ class RankingModel(object):
                             self.embedding_dim,
                             weights=[self.reader.embdict.embedding_matrix],
                             input_length=self.max_sequence_length,
-                            trainable=True)
+                            trainable=True,
+                            mask_zero=True)
             embedding_layer_a = Embedding(self.reader.embdict.index,
                             self.embedding_dim,
                             weights=[self.reader.embdict.embedding_matrix],
                             input_length=self.max_sequence_length,
-                            trainable=True)
+                            trainable=True,
+                            mask_zero=True)
             emb_que = embedding_layer_a(drop_que)
             emb_apos = embedding_layer_q(drop_apos)
             emb_aneg = embedding_layer_a(drop_aneg)
             lstm_layer_q = self.create_lstm_layer_max_pooling(self.max_sequence_length)
             lstm_layer_a = self.create_lstm_layer_max_pooling(self.max_sequence_length)
+
+            if self.recurrent == "bilstm" or self.recurrent is None:
+                lstm_layer_q = Bidirectional(LSTM(self.hidden_dim,
+                                         input_shape=(self.max_sequence_length, self.embedding_dim,),
+                                         return_sequences=self.return_sequences), merge_mode='concat')
+                lstm_layer_a = Bidirectional(LSTM(self.hidden_dim,
+                                         input_shape=(self.max_sequence_length, self.embedding_dim,),
+                                         return_sequences=self.return_sequences), merge_mode='concat')
+            elif self.recurrent == "lstm":
+                lstm_layer_q = LSTM(self.hidden_dim,
+                           input_shape=(self.max_sequence_length, self.embedding_dim,),
+                           return_sequences=self.return_sequences)
+                lstm_layer_a = LSTM(self.hidden_dim,
+                           input_shape=(self.max_sequence_length, self.embedding_dim,),
+                           return_sequences=self.return_sequences)
             lstm_que = lstm_layer_q(emb_que)
             lstm_apos = lstm_layer_a(emb_apos)
             lstm_aneg = lstm_layer_a(emb_aneg)
