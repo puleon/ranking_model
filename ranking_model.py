@@ -70,7 +70,7 @@ class RankingModel(object):
 
         if self.run_type == "train" or self.run_type is None:
             self.compile()
-            self.score_model = self.obj_model.get_layer(name="score_model")
+            self.score_model = self.get_layer_custom("score_model")
             self.callbacks = []
             cb = custom_callbacks.MetricsCallback(self.reader, self.obj_model,
                                                   self.score_model, self.score_model, params_dict)
@@ -105,7 +105,7 @@ class RankingModel(object):
         elif self.run_type == "infer":
             self.compile()
             self.load()
-            self.score_model = self.obj_model.get_layer(name="score_model")
+            self.score_model = self.get_layer_custom("score_model")
             # cb = custom_callbacks.MetricsCallback(self.reader, self.obj_model,
             #                                       self.score_model, self.score_model,
             #                                       params_dict)
@@ -289,14 +289,14 @@ class RankingModel(object):
                             weights=[self.reader.embdict.embedding_matrix],
                             input_length=self.max_sequence_length,
                             trainable=True,
-                            mask_zero=True)
+                            mask_zero=True, name='embeddings')
             emb_que = embedding_layer(drop_que)
             emb_apos = embedding_layer(drop_apos)
             emb_aneg = embedding_layer(drop_aneg)
             if self.recurrent == "bilstm" or self.recurrent is None:
                 lstm_layer = Bidirectional(LSTM(self.hidden_dim,
                                          input_shape=(self.max_sequence_length, self.embedding_dim,),
-                                         return_sequences=self.return_sequences), merge_mode='concat')
+                                         return_sequences=self.return_sequences), merge_mode='concat', name='bilstm')
             elif self.recurrent == "lstm":
                 lstm_layer = LSTM(self.hidden_dim,
                            input_shape=(self.max_sequence_length, self.embedding_dim,),
@@ -415,6 +415,10 @@ class RankingModel(object):
         self.obj_model.compile(loss=self.loss,
                                optimizer=self.optimizer)
 
+    def get_layer_custom(self, layer_name):
+        return Model(inputs=self.obj_model.input,
+                     outputs=self.obj_model.get_layer(layer_name).get_output_at(0))
+
     def fit(self):
         self.obj_model.fit_generator(generator=self.reader.batch_generator_train(),
                                      steps_per_epoch=self.reader.train_steps,
@@ -450,6 +454,11 @@ class RankingModel(object):
             loss = self.obj_model.train_on_batch(x=el[0], y=el[1])
             losses.append(loss)
             print("loss:", loss)
+            # embeddings = self.get_layer_custom(layer_name='embeddings').predict_on_batch(el[0])
+            # bilstm = self.get_layer_custom(layer_name='bilstm').predict_on_batch(el[0])
+            # np.save('embeddings.npy', embeddings)
+            # np.save('bilstm.npy', bilstm)
+            # exit()
         self.losses["loss"].append(np.mean(np.asarray(losses).astype(float)) if len(losses) > 0 else -1.0)
 
         print("Validation:")
@@ -480,7 +489,7 @@ class RankingModel(object):
             if i % num_samples == 0:
                  y_set += el[2]
             y_true.append(np.expand_dims(el[1], axis=1))
-            y_pred.append(self.score_model.predict_on_batch(x=el[0]))
+            y_pred.append(self.score_model.predict_on_batch(x=[el[0][0], el[0][1], el[0][1]]))
             i += 1
 
         y_true = np.vstack([np.hstack(y_true[i * num_samples:
