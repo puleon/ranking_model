@@ -62,6 +62,11 @@ class DataReader(object):
         elif self.dataset_name == 'faq_sber_v3':
                     self.read_data()
 
+        if self.sample_candidates_valid == 'global':
+                self.num_ranking_samples_valid = len(self.valid_data)
+        if self.sample_candidates_test == 'global':
+                self.num_ranking_samples_test = len(self.test_data)
+
         print('Length of train data:', len(self.train_data))
         if self.negative_samples_pool is not None:
             print('Negative samples pool shape:',
@@ -751,19 +756,19 @@ class DataReader(object):
     def create_rank_resp(self, data_indices, data_type="valid"):
         if data_type == "valid":
             data = self.valid_data
-            data_length = len(data)
             ranking_length = self.num_ranking_samples_valid
             batch_size = self.val_batch_size
             pool = self.ranking_samples_pool_valid
             positive_pool = self.positive_answers_pool_valid
+            sample_candidates = self.sample_candidates_valid
         elif data_type == "test":
             data = self.test_data
-            data_length = len(data)
             ranking_length = self.num_ranking_samples_test
             batch_size = self.test_batch_size
             pool = self.ranking_samples_pool_test
             positive_pool = self.positive_answers_pool_test
-        if self.sample_candidates_test == "pool":
+            sample_candidates = self.sample_candidates_test
+        if sample_candidates == "pool":
             y_set = (ranking_length + 1) * [[np.arange(len(positive_pool[el])) for el in data_indices]]
             y = (ranking_length + 1) * [np.zeros(batch_size)]
             response_data = [[el["response"] for el in data if el['id'] in data_indices]]
@@ -775,14 +780,15 @@ class DataReader(object):
                 else:
                     response = response_indices
                 response_data.append(response)
-        elif self.sample_candidates_test == "global" or self.sample_candidates_test is None:
-            y = (data_length + 1) * [np.zeros(batch_size)]
+        elif sample_candidates == "global" or sample_candidates is None:
+            y_set = (ranking_length + 1) * [[np.arange(len(positive_pool[el])) for el in data_indices]]
+            y = (ranking_length + 1) * [np.zeros(batch_size)]
             response_data = []
             for i in range(batch_size):
                 response = [el["response"] for el in data if el["id"] != data_indices[i]]
                 response_data += response
 
-            response_data = [response_data[i:-1:(data_length-1)] for i in range(data_length-1)]
-            response_data = [el["response"] for el in data if el["id"] in data_indices] + response_data
-            response_data += [el["context"] for el in data if el["id"] in data_indices]
+            response_data = [response_data[i::(ranking_length-1)] for i in range(ranking_length-1)]
+            response_data = [[el["response"] for el in data if el["id"] in data_indices]] + response_data
+            response_data = response_data + [[el["context"] for el in data if el["id"] in data_indices]]
         return response_data, y, y_set
