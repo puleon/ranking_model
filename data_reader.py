@@ -62,11 +62,6 @@ class DataReader(object):
         elif self.dataset_name == 'faq_sber_v3':
                     self.read_data()
 
-        if self.sample_candidates_valid == 'global':
-                self.num_ranking_samples_valid = len(self.valid_data)
-        if self.sample_candidates_test == 'global':
-                self.num_ranking_samples_test = len(self.test_data)
-
         print('Length of train data:', len(self.train_data))
         if self.negative_samples_pool is not None:
             print('Negative samples pool shape:',
@@ -167,7 +162,10 @@ class DataReader(object):
         self.embdict.save_items()
         self.embdict.create_embedding_matrix()
         self.calculate_steps()
-
+        if self.sample_candidates_valid == 'global':
+                self.num_ranking_samples_valid = len(self.label2tokens_vocab)
+        if self.sample_candidates_test == 'global':
+                self.num_ranking_samples_test = len(self.label2tokens_vocab)
 
     def read_data_ubuntu(self):
         self.preprocess_data_ubuntu()
@@ -783,10 +781,11 @@ class DataReader(object):
                 response_data.append(response)
         elif sample_candidates == "global" or sample_candidates is None:
             y_set = (ranking_length + 1) * [[np.arange(len(positive_pool[el])) for el in data_indices]]
-            y = (ranking_length + 1) * [np.zeros(batch_size)]
+            y = (ranking_length + 1) * [np.zeros(len(data_indices))]
             response_data = []
-            for i in range(batch_size):
-                response = [el["response"] for el in data if el["id"] != data_indices[i]]
+            for i in range(len(data_indices)):
+                response = [self.label2tokens_vocab[str(el)] for el in range(1, len(self.label2tokens_vocab) + 1)
+                            if str(el) != positive_pool[data_indices[i]][0]]
                 response_data += response
 
             response_data = [response_data[i::(ranking_length-1)] for i in range(ranking_length-1)]
