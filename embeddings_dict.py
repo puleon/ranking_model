@@ -46,7 +46,7 @@ class EmbeddingsDict(object):
         elif self.embeddings == "word2vec":
             self.embeddings_model = Word2Vec.load(self.embeddings_model_file)
 
-        assert(self.embeddings_model["I"].shape[0] == self.embedding_dim),\
+        assert(self.embeddings_model[","].shape[0] == self.embedding_dim),\
             'The dimensionality of embeddings does not equal to the embedding_dim parameter. Exit.'
 
     def add_items(self, sentence_li):

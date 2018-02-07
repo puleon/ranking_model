@@ -5,6 +5,7 @@ import nltk
 from nltk.tokenize import sent_tokenize, word_tokenize
 import json
 from keras.preprocessing.sequence import pad_sequences
+import os
 
 from embeddings_dict import EmbeddingsDict
 
@@ -17,6 +18,7 @@ class DataReader(object):
         self.type_of_loss = params_dict['type_of_loss']
         self.sampling = params_dict['sampling']
         self.sample_candidates = params_dict.get('sample_candidates')
+        self.sample_candidates_valid_train = params_dict.get('sample_candidates_valid_train')
         self.sample_candidates_valid = params_dict.get('sample_candidates_valid')
         self.sample_candidates_test = params_dict.get('sample_candidates_test')
         self.raw_data_path = params_dict['raw_dataset_path']
@@ -26,6 +28,7 @@ class DataReader(object):
         self.embdict = EmbeddingsDict(params_dict)
         self.dataset_name = params_dict['dataset_name']
         self.negative_samples_pool = None
+        self.negative_samples_pool_valid_train = None
         self.num_negative_samples = params_dict['num_negative_samples']
         self.ranking_samples_pool_valid = None
         self.num_ranking_samples_valid = params_dict['num_ranking_samples_valid']
@@ -40,19 +43,24 @@ class DataReader(object):
         self.seed = params_dict.get("seed")
         self.padding = params_dict.get("padding")
         self.truncating = params_dict.get("truncating")
+        self.labels = params_dict.get("labels")
 
         np.random.seed(self.seed)
 
+        self.label2tokens_vocab = {}
+        self.label2context_vocab = {}
         #nltk.download('punkt')
 
         if self.dataset_name == 'insurance':
             self.read_data_insurance()
-        if self.dataset_name == 'insurance_v1':
+        elif self.dataset_name == 'insurance_v1':
             self.read_data_insurance_v1()
         elif self.dataset_name == 'twitter':
                 self.read_data_twitter()
         elif self.dataset_name == 'ubuntu':
                     self.read_data_ubuntu()
+        elif self.dataset_name == 'faq_sber_v3':
+                    self.read_data()
 
         print('Length of train data:', len(self.train_data))
         if self.negative_samples_pool is not None:
@@ -67,6 +75,93 @@ class DataReader(object):
         if self.ranking_samples_pool_test is not None:
             print('Ranking test samples pool shape:',
                   (len(self.ranking_samples_pool_test), len(self.ranking_samples_pool_test[-1])))
+
+    def build_label2tokens(self):
+
+        if self.labels:
+            self.presence_label2tokens = True
+            with open(self.raw_data_path + 'contexts.vocab') as f:
+                tsv_reader = csv.reader(f, delimiter='\t')
+                for row in tsv_reader:
+                    self.label2context_vocab[row[0]] = row[1]
+            labels = [el[0] for el in self.label2context_vocab.items()]
+            contexts = self.tokenize([el[1] for el in self.label2context_vocab.items()])
+            self.embdict.add_items(contexts)
+            self.label2context_vocab = {el[0]: el[1] for el in zip(labels, contexts)}
+
+            with open(self.raw_data_path + 'responses.vocab') as f:
+                tsv_reader = csv.reader(f, delimiter='\t')
+                for row in tsv_reader:
+                    self.label2tokens_vocab[row[0]] = row[1]
+            labels = [el[0] for el in self.label2tokens_vocab.items()]
+            responses = self.tokenize([el[1] for el in self.label2tokens_vocab.items()])
+            self.embdict.add_items(responses)
+            self.label2tokens_vocab = {el[0]:el[1] for el in zip(labels, responses)}
+
+    def preprocess_data(self, data_type='train'):
+        if self.labels:
+            fname = self.raw_data_path + data_type + '.labels'
+            c = []
+            r = []
+            with open(fname) as f:
+                tsv_reader = csv.reader(f, delimiter='\t')
+                for row in tsv_reader:
+                    c.append(row[0].split(' '))
+                    r.append(row[1].split(' '))
+            data = []
+            for i in range(len(c)):
+                for j in range(len(c[i])):
+                    for k in range(len(r[i])):
+                        data.append([c[i][j], r[i][k], r[i]])
+        if data_type == 'train':
+            if not os.path.isfile(self.raw_data_path + 'valid.labels'):
+                np.random.shuffle(data)
+                self.train_data = data[:-2*self.batch_size]
+                self.valid_data_train = data[-2*self.batch_size:]
+
+            self.positive_answers_pool = [el[2] for el in self.train_data]
+            self.train_data = [{"id": el[0],
+                                "context": self.label2context_vocab[el[1][0]],
+                                "response": self.label2tokens_vocab[el[1][1]]}
+                               for el in enumerate(self.train_data)]
+
+            self.positive_answers_pool_valid_train = [el[2] for el in self.valid_data_train]
+            self.valid_data_train = [{"id": el[0],
+                                      "context": self.label2context_vocab[el[1][0]],
+                                      "response": self.label2tokens_vocab[el[1][1]]}
+                                     for el in enumerate(self.valid_data_train)]
+
+        if data_type == 'test':
+            self.test_data = data
+            self.positive_answers_pool_test = [el[2] for el in self.test_data]
+            self.test_data = [{"id": el[0],
+                               "context": self.label2context_vocab[el[1][0]],
+                               "response": self.label2tokens_vocab[el[1][1]]}
+                              for el in enumerate(self.test_data)]
+
+            self.ranking_samples_pool_test = []
+            for i in range(len(self.test_data)):
+                p = np.ones(len(self.label2tokens_vocab))
+                for el in self.positive_answers_pool_test[i]:
+                    p[int(el) - 1] = 0.
+                p = p / float(len(self.label2tokens_vocab) - len(self.positive_answers_pool_test[i]))
+                candidate_indices = np.random.choice(np.arange(1, len(self.label2tokens_vocab) + 1),
+                                                     self.num_ranking_samples_test, replace=False, p=p)
+                candidate_indices = [str(el) for el in candidate_indices]
+                self.ranking_samples_pool_test.append(candidate_indices)
+
+            self.positive_answers_pool_valid = self.positive_answers_pool_test
+            self.ranking_samples_pool_valid = self.ranking_samples_pool_test
+            self.valid_data = self.test_data
+
+    def read_data(self):
+        self.build_label2tokens()
+        self.preprocess_data('train')
+        self.preprocess_data('test')
+        self.embdict.save_items()
+        self.embdict.create_embedding_matrix()
+        self.calculate_steps()
+
 
     def read_data_ubuntu(self):
         self.preprocess_data_ubuntu()
@@ -432,7 +527,7 @@ class DataReader(object):
             data = self.valid_data_train
             negative_samples_pool = self.negative_samples_pool_valid_train
             positive_answers_pool = self.positive_answers_pool_valid_train
-            sample_candidates = self.sample_candidates_valid
+            sample_candidates = self.sample_candidates_valid_train
         if sample_candidates == "pool":
             candidate_lists = [negative_samples_pool[el] for el in data_indices]
             candidate_indices = [np.random.randint(0, np.min([len(candidate_lists[i]),
