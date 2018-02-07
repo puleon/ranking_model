@@ -36,7 +36,7 @@
   "sample_candidates": "global",
   "sample_candidates_valid_train": "global",
   "sample_candidates_valid": "pool",
-  "sample_candidates_test": "pool",
+  "sample_candidates_test": "global",
   "recurrent": "bilstm",
   "pooling": "max",
   "metrics": ["rank_response", "rank_context",
