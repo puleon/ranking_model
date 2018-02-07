@@ -121,7 +121,8 @@ class DataReader(object):
         if data_type == 'train':
             if not os.path.isfile(self.raw_data_path + 'valid.labels'):
                 np.random.shuffle(data)
-                self.train_data = data[:-2*self.batch_size]
+                # self.train_data = data[:-2*self.batch_size]
+                self.train_data = data
                 self.valid_data_train = data[-2*self.batch_size:]
 
             self.positive_answers_pool = [el[2] for el in self.train_data]
