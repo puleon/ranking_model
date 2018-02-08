@@ -82,14 +82,25 @@ class DataReader(object):
             data = f.readlines()
             self.label2idx_vocab = {el.split('\t')[0]: (el.split('\t')[1][:-1]).split(' ') for el in data}
 
-    def build_label2tokens_vocabulary_insurance(self):
-        self.label2tokens_vocab = {}
+    def build_label2response_vocabulary_insurance(self):
+        self.label2response_vocab = {}
         answers = []
         for el in self.label2idx_vocab.items():
-            self.label2tokens_vocab[el[0]] = self.idx2tokens_insurance(el[1])
+            self.label2response_vocab[el[0]] = self.idx2tokens_insurance(el[1])
             answers.append(self.idx2tokens_insurance(el[1]))
         self.presence_label2tokens = True
         self.embdict.add_items(answers)
+
+    def build_label2response_vocabulary_insurance(self):
+        self.label2response_vocab = {}
+        answers = []
+        for el in self.label2idx_vocab.items():
+            self.label2response_vocab[el[0]] = self.idx2tokens_insurance(el[1])
+            answers.append(self.idx2tokens_insurance(el[1]))
+        self.presence_label2tokens = True
+        self.embdict.add_items(answers)
+
+
 
     def idx2tokens_insurance(self, utterance_idx):
         utterance_tokens = [self.vocabulary[idx] for idx in utterance_idx]
@@ -111,7 +122,7 @@ class DataReader(object):
                 pos_answers.append(elj)
                 self.positive_answers_pool.append(pa_list)
         questions = [self.idx2tokens_insurance(el) for el in questions]
-        pos_answers = [self.label2tokens_vocab[el] for el in pos_answers]
+        pos_answers = [self.label2response_vocab[el] for el in pos_answers]
         self.embdict.add_items(questions)
 
         self.train_data = [{"id": el[0], "context": el[1][0], "response": el[1][1]}
@@ -137,7 +148,7 @@ class DataReader(object):
                 nas.remove(elj)
                 neg_answers.append(nas)
         questions = [self.idx2tokens_insurance(el) for el in questions]
-        pos_answers = [self.label2tokens_vocab[el] for el in pos_answers]
+        pos_answers = [self.label2response_vocab[el] for el in pos_answers]
         self.embdict.add_items(questions)
 
         data = [{"id": el[0], "context": el[1][0], "response": el[1][1]}
@@ -159,7 +170,7 @@ class DataReader(object):
     def read_data_insurance_v1(self):
         self.build_vocabulary_insurance('vocabulary')
         self.build_label2idx_vocabulary_insurance('answers.label.token_idx')
-        self.build_label2tokens_vocabulary_insurance()
+        self.build_label2response_vocabulary_insurance()
         self.preprocess_data_insurance_v1_train()
         self.preprocess_data_insurance_v1_valid_test('dev')
         self.preprocess_data_insurance_v1_valid_test('test1')
@@ -234,17 +245,17 @@ class DataReader(object):
                                  for i in range(self.batch_size)]
             candidate_numbers = [candidate_lists[i][candidate_indices[i]] for i in range(self.batch_size)]
             if self.presence_label2tokens:
-                negative_response_data = [self.label2tokens_vocab[el] for el in candidate_numbers]
+                negative_response_data = [self.label2response_vocab[el] for el in candidate_numbers]
             else:
                 negative_response_data = candidate_numbers
         elif sample_candidates == "global":
             candidate_indices = []
             for i in range(self.batch_size):
-                candidate_index = np.random.randint(1, len(self.label2tokens_vocab) + 1, 1)[0]
+                candidate_index = np.random.randint(1, len(self.label2response_vocab) + 1, 1)[0]
                 while str(candidate_index) in positive_answers_pool[data_indices[i]]:
-                    candidate_index = np.random.randint(1, len(self.label2tokens_vocab) + 1, 1)[0]
+                    candidate_index = np.random.randint(1, len(self.label2response_vocab) + 1, 1)[0]
                 candidate_indices.append(str(candidate_index))
-            negative_response_data = [self.label2tokens_vocab[el] for el in candidate_indices]
+            negative_response_data = [self.label2response_vocab[el] for el in candidate_indices]
         return negative_response_data
 
     def batch_generator_test(self, data_type="valid"):
@@ -295,7 +306,7 @@ class DataReader(object):
             for i in pool_indices:
                 response_indices = [pool[el][i] for el in data_indices]
                 if self.presence_label2tokens:
-                    response = [self.label2tokens_vocab[el] for el in response_indices]
+                    response = [self.label2response_vocab[el] for el in response_indices]
                 else:
                     response = response_indices
                 response_data.append(response)
