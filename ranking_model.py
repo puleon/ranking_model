@@ -19,7 +19,6 @@ import json
 class RankingModel(object):
 
     def __init__(self, params_dict):
-        self.epoch_num_valid = params_dict.get("epoch_num_valid")
         self.run_type = params_dict.get("run_type")
         self.device_number = params_dict["device_number"]
         self.model_file = params_dict.get("model_file")
@@ -30,16 +29,11 @@ class RankingModel(object):
         self.embedding_dim = params_dict['embedding_dim']
         self.seed = params_dict['seed']
         self.hidden_dim = params_dict['hidden_dim']
-        self.emb_drop_val = params_dict['emb_drop_val']
-        self.recdrop_val = params_dict['recdrop_val']
-        self.inpdrop_val = params_dict['inpdrop_val']
-        self.ldrop_val = params_dict['ldrop_val']
-        self.dropout_val = params_dict['dropout_val']
-        self.maxpool_drop_val = params_dict["maxpool_drop_val"]
         self.learning_rate = params_dict['learning_rate']
         self.margin = params_dict['margin']
         self.type_of_weights = params_dict['type_of_weights']
         self.epoch_num = params_dict["epoch_num"]
+        self.epoch_num_valid = params_dict.get("epoch_num_valid")
         self.metrics = params_dict["metrics"]
 
         if self.epoch_num_valid is None:
@@ -49,17 +43,9 @@ class RankingModel(object):
         self.score_model = None
         self.reader = DataReader(self.score_model, params_dict)
 
-        if params_dict["type_of_loss"] == "triplet_hinge":
-            self.loss = self.triplet_loss
-            self.obj_model = self.triplet_hinge_loss_model()
-        elif params_dict["type_of_loss"] == "binary_crossentropy":
-            self.loss = losses.binary_crossentropy
-            self.obj_model = self.binary_crossentropy_model()
-
-        if params_dict['optimizer_name'] == 'SGD':
-            self.optimizer = SGD(lr=self.learning_rate)
-        elif params_dict['optimizer_name'] == 'Adam':
-                self.optimizer = Adam(lr=self.learning_rate)
+        self.loss = self.triplet_loss
+        self.obj_model = self.triplet_hinge_loss_model()
+        self.optimizer = Adam(lr=self.learning_rate)
 
         if self.run_type == "train" or self.run_type is None:
             self.compile()
@@ -120,20 +106,6 @@ class RankingModel(object):
 
         return shapes[0]
 
-    def sigmoid(self, inputs):
-        input_a, input_b = inputs
-        input_a = Dense(units=2*self.hidden_dim, use_bias=False)(input_a)
-        output = Lambda(lambda x: K.batch_dot(x[0], x[1], axes=1))([input_a, input_b])
-        output = custom_layers.Bias()(output)
-        output = Activation("sigmoid")(output)
-        return output
-
-    def sigmoid_output_shape(self, shapes):
-        """Define an output shape of a lambda layer of a model."""
-
-        shape_a, shape_b = shapes
-        return shape_a[0], 1
-
     def max_pooling(self, input):
         """Define a function for a lambda layer of a model."""
 
@@ -162,26 +134,20 @@ class RankingModel(object):
         elif self.pooling == "no":
             ret_seq = False
         inp = Input(shape=(input_dim,  self.embedding_dim,))
-        out = Dropout(self.ldrop_val)(inp)
         ker_in = glorot_uniform(seed=self.seed)
         rec_in = Orthogonal(seed=self.seed)
         if self.recurrent == "bilstm" or self.recurrent is None:
             out = Bidirectional(LSTM(self.hidden_dim,
                                 input_shape=(input_dim, self.embedding_dim,),
-                                recurrent_dropout=self.recdrop_val,
-                                dropout=self.inpdrop_val,
                                 kernel_initializer=ker_in,
                                 recurrent_initializer=rec_in,
-                                return_sequences=ret_seq), merge_mode='concat')(out)
+                                return_sequences=ret_seq), merge_mode='concat')(inp)
         elif self.recurrent == "lstm":
             out = LSTM(self.hidden_dim,
                        input_shape=(input_dim, self.embedding_dim,),
-                       recurrent_dropout=self.recdrop_val,
-                       dropout=self.inpdrop_val,
                        kernel_initializer=ker_in,
                        recurrent_initializer=rec_in,
-                       return_sequences=ret_seq)(out)
-        out = Dropout(self.dropout_val)(out)
+                       return_sequences=ret_seq)(inp)
         model = Model(inputs=inp, outputs=out)
         return model
 
@@ -191,24 +157,17 @@ class RankingModel(object):
         input_a = Input(shape=(input_dim,))
         input_b = Input(shape=(input_dim,))
         if self.type_of_weights == "shared":
-            drop_layer = Dropout(self.emb_drop_val)
-            drop_a = drop_layer(input_a)
-            drop_b = drop_layer(input_b)
             embedding_layer = self.create_embedding_layer(self.max_sequence_length)
-            emb_a = embedding_layer(drop_a)
-            emb_b = embedding_layer(drop_b)
+            emb_a = embedding_layer(input_a)
+            emb_b = embedding_layer(input_b)
             lstm_layer = self.create_lstm_layer_max_pooling(self.max_sequence_length)
             lstm_a = lstm_layer(emb_a)
             lstm_b = lstm_layer(emb_b)
         elif self.type_of_weights == "separate":
-            drop_layer_a = Dropout(self.emb_drop_val)
-            drop_layer_b = Dropout(self.emb_drop_val)
-            drop_a = drop_layer_a(input_a)
-            drop_b = drop_layer_b(input_b)
             embedding_layer_a = self.create_embedding_layer(self.max_sequence_length)
             embedding_layer_b = self.create_embedding_layer(self.max_sequence_length)
-            emb_a = embedding_layer_a(drop_a)
-            emb_b = embedding_layer_b(drop_b)
+            emb_a = embedding_layer_a(input_a)
+            emb_b = embedding_layer_b(input_b)
             lstm_layer_a = self.create_lstm_layer_max_pooling(self.max_sequence_length)
             lstm_layer_b = self.create_lstm_layer_max_pooling(self.max_sequence_length)
             lstm_a = lstm_layer_a(emb_a)
@@ -218,15 +177,6 @@ class RankingModel(object):
                                 name="max_pooling_a")(lstm_a)
             lstm_b = Lambda(self.max_pooling, output_shape=self.max_pooling_output_shape,
                                 name="max_pooling_b")(lstm_b)
-            if self.type_of_weights == "shared":
-                dropout = Dropout(self.maxpool_drop_val)
-                lstm_a = dropout(lstm_a)
-                lstm_b = dropout(lstm_b)
-            elif self.type_of_weights == "separate":
-                dropout_a = Dropout(self.maxpool_drop_val)
-                dropout_b = Dropout(self.maxpool_drop_val)
-                lstm_a = dropout_a(lstm_a)
-                lstm_b = dropout_b(lstm_b)
         cosine = Dot(normalize=True, axes=-1)([lstm_a, lstm_b])
         model = Model([input_a, input_b], cosine, name="score_model")
         return model
@@ -248,40 +198,6 @@ class RankingModel(object):
 
         return K.mean(K.maximum(self.margin - y_pred, 0.), axis=-1)
 
-    def maxpool_sigmoid_score_model(self, input_dim):
-        """Define a model with bi-LSTM layers and without attention."""
-
-        input_a = Input(shape=(input_dim,))
-        input_b = Input(shape=(input_dim,))
-        embedding_layer = self.create_embedding_layer(self.max_sequence_length)
-        emb_a = embedding_layer(input_a)
-        emb_b = embedding_layer(input_b)
-        if self.type_of_weights == "shared":
-            lstm_layer = self.create_lstm_layer_max_pooling(self.max_sequence_length)
-            lstm_a = lstm_layer(emb_a)
-            lstm_b = lstm_layer(emb_b)
-        elif self.type_of_weights == "separate":
-            lstm_layer_a = self.create_lstm_layer_max_pooling(self.max_sequence_length)
-            lstm_layer_b = self.create_lstm_layer_max_pooling(self.max_sequence_length)
-            lstm_a = lstm_layer_a(emb_a)
-            lstm_b = lstm_layer_b(emb_b)
-        if self.pooling is None or self.pooling == "max":
-            lstm_a = Lambda(self.max_pooling, output_shape=self.max_pooling_output_shape,
-                          name="max_pooling_a")(lstm_a)
-            lstm_b = Lambda(self.max_pooling, output_shape=self.max_pooling_output_shape,
-                          name="max_pooling_b")(lstm_b)
-        sigmoid = Lambda(self.sigmoid, output_shape=self.sigmoid_output_shape,
-                      name="similarity_network")([lstm_a, lstm_b])
-        model = Model([input_a, input_b], sigmoid, name="score_model")
-        return model
-
-    def binary_crossentropy_model(self):
-        question = Input(shape=(self.max_sequence_length,))
-        answer = Input(shape=(self.max_sequence_length,))
-        self.score_model = self.maxpool_sigmoid_score_model(self.max_sequence_length)
-        score = self.score_model([question, answer])
-        model = Model([question, answer], score)
-        return model
 
     def compile(self):
         self.obj_model.compile(loss=self.loss,
