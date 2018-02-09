@@ -273,7 +273,7 @@ class DataReader(object):
             response_data = [[el["response"] for el in context_response_data]]
             pool_indices = np.arange(ranking_length)
             for i in pool_indices:
-                response = [el["neg_pool"] for el in context_response_data]
+                response = [el["neg_pool"][i] for el in context_response_data]
                 response_data.append(response)
         elif sample_candidates == "global" or sample_candidates is None:
             y_set = (ranking_length + 1) * [[np.arange(len(el["pos_pool"])) for el in context_response_data]]
