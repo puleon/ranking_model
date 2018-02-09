@@ -216,8 +216,8 @@ class RankingModel(object):
         print("Save folder:", self.save_folder)
         self.reader.get_model(self.score_model)
         self.init_metrics()
-        self.evaluate(0, "valid")
-        self.evaluate(0, "test")
+        # self.evaluate(0, "valid")
+        # self.evaluate(0, "test")
         self.save_metrics()
         self.save_losses()
         for i in range(1, self.epoch_num + 1):
