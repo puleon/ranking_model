@@ -44,9 +44,9 @@ class DataReader(object):
             self.read_data_insurance_v1()
 
         if self.sample_candidates_valid == 'global':
-                self.num_ranking_samples_valid = len(self.valid_data)
+                self.num_ranking_samples_valid = len(self.label2response_vocab)
         if self.sample_candidates_test == 'global':
-                self.num_ranking_samples_test = len(self.test_data)
+                self.num_ranking_samples_test = len(self.label2response_vocab)
 
         print('Length of train data:', len(self.train_data))
         print('Length of validation data for train:', len(self.valid_data_train))
@@ -132,7 +132,7 @@ class DataReader(object):
                 pos_responses.append(elj)
                 pos_responses_pool.append(pa_list)
                 nas = [int(el)-1 for el in na.split(' ')]
-                nas.remove(elj)
+                nas = [el for el in nas if el not in pa_list]
                 neg_responses_pool.append(nas)
         contexts = [self.idx2tokens_insurance(el) for el in contexts]
         contexts = self.context2label_insurance(contexts)
@@ -270,21 +270,23 @@ class DataReader(object):
         if sample_candidates == "pool":
             y_set = (ranking_length + 1) * [[np.arange(len(el["pos_pool"])) for el in data]]
             y = (ranking_length + 1) * [np.zeros(batch_size)]
-            response_data = [[el["response"] for el in context_response_data]]
-            pool_indices = np.arange(ranking_length)
-            for i in pool_indices:
-                response = [el["neg_pool"][i] for el in context_response_data]
-                response_data.append(response)
+            response_data = []
+            for i in range(len(context_response_data)):
+                pos_pool = context_response_data[i]["pos_pool"]
+                neg_pool = context_response_data[i]["neg_pool"]
+                response = pos_pool + neg_pool
+                response_data += response[:ranking_length]
+            response_data = [response_data[i::ranking_length] for i in range(ranking_length)]
+
         elif sample_candidates == "global" or sample_candidates is None:
             y_set = (ranking_length + 1) * [[np.arange(len(el["pos_pool"])) for el in context_response_data]]
             y = (ranking_length + 1) * [np.zeros(batch_size)]
             response_data = []
-            for i in range(batch_size):
-                response = [el for el in list(self.label2response_vocab.keys())
-                            if el != context_response_data[i]["response"]]
+            for i in range(len(context_response_data)):
+                pos_pool  = context_response_data[i]["pos_pool"]
+                neg_pool = [el for el in list(self.label2response_vocab.keys())
+                            if el not in context_response_data[i]["pos_pool"]]
+                response = pos_pool + neg_pool
                 response_data += response
-
-            response_data = [response_data[i::(ranking_length-1)] for i in range(ranking_length-1)]
-            response_data = [[el["response"] for el in context_response_data]] + response_data
-            response_data = response_data + [[el["context"] for el in context_response_data]]
+            response_data = [response_data[i::ranking_length] for i in range(ranking_length)]
         return response_data, y, y_set

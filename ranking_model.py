@@ -216,8 +216,8 @@ class RankingModel(object):
         print("Save folder:", self.save_folder)
         self.reader.get_model(self.score_model)
         self.init_metrics()
-        # self.evaluate(0, "valid")
-        # self.evaluate(0, "test")
+        self.evaluate(0, "valid")
+        self.evaluate(0, "test")
         self.save_metrics()
         self.save_losses()
         for i in range(1, self.epoch_num + 1):
@@ -252,11 +252,11 @@ class RankingModel(object):
     def evaluate(self, epoch, eval_type="valid"):
         if eval_type == "valid":
             steps = self.reader.valid_steps
-            num_samples = self.reader.num_ranking_samples_valid + 1
+            num_samples = self.reader.num_ranking_samples_valid
             generator = self.reader.batch_generator_test("valid")
         elif eval_type == "test":
             steps = self.reader.test_steps
-            num_samples = self.reader.num_ranking_samples_test + 1
+            num_samples = self.reader.num_ranking_samples_test
             generator = self.reader.batch_generator_test("test")
 
         metrics_buff = {}
