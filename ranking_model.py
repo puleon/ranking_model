@@ -216,8 +216,8 @@ class RankingModel(object):
         print("Save folder:", self.save_folder)
         self.reader.get_model(self.score_model)
         self.init_metrics()
-        # self.evaluate(0, "valid")
-        # self.evaluate(0, "test")
+        self.evaluate(0, "valid")
+        self.evaluate(0, "test")
         self.save_metrics()
         self.save_losses()
         for i in range(1, self.epoch_num + 1):
@@ -263,13 +263,9 @@ class RankingModel(object):
         y_set = []
         y_true = []
         y_pred = []
-        i = 0
         for el in generator:
-            if i % num_samples == 0:
-                 y_set += el[2]
             y_true.append(np.expand_dims(el[1], axis=1))
             y_pred.append(self.score_model.predict_on_batch(x=el[0]))
-            i += 1
 
         y_true = np.vstack([np.hstack(y_true[i * num_samples:
                            (i + 1) * num_samples]) for i in range(steps)])
@@ -309,20 +305,8 @@ class RankingModel(object):
                 self.metrics_functions.append(custom_metrics.rank_response)
                 self.val_metrics[el] = []
                 self.test_metrics[el] = []
-            if el == "rank_response_set":
-                self.metrics_functions.append(custom_metrics.rank_response_set)
-                self.val_metrics[el] = []
-                self.test_metrics[el] = []
-            if el == "rank_context":
-                self.metrics_functions.append(custom_metrics.rank_context)
-                self.val_metrics[el] = []
-                self.test_metrics[el] = []
             if el == "r_at_1":
                 self.metrics_functions.append(custom_metrics.r_at_1)
-                self.val_metrics[el] = []
-                self.test_metrics[el] = []
-            if el == "r_at_1_set":
-                self.metrics_functions.append(custom_metrics.r_at_1_set)
                 self.val_metrics[el] = []
                 self.test_metrics[el] = []
             if el == "r_at_2":
@@ -331,22 +315,6 @@ class RankingModel(object):
                 self.test_metrics[el] = []
             if el == "r_at_5":
                 self.metrics_functions.append(custom_metrics.r_at_5)
-                self.val_metrics[el] = []
-                self.test_metrics[el] = []
-            if el == "map_at_1_full":
-                self.metrics_functions.append(custom_metrics.map_at_1_full)
-                self.val_metrics[el] = []
-                self.test_metrics[el] = []
-            if el == "map_at_1_relevant":
-                self.metrics_functions.append(custom_metrics.map_at_1_relevant)
-                self.val_metrics[el] = []
-                self.test_metrics[el] = []
-            if el == "diff_top":
-                self.metrics_functions.append(custom_metrics.diff_top)
-                self.val_metrics[el] = []
-                self.test_metrics[el] = []
-            if el == "diff_answer":
-                self.metrics_functions.append(custom_metrics.diff_answer)
                 self.val_metrics[el] = []
                 self.test_metrics[el] = []
 

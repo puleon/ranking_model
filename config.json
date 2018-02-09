@@ -28,11 +28,7 @@
   "type_of_weights": "shared",
   "recurrent": "bilstm",
   "pooling": "max",
-  "metrics": ["rank_response", "rank_context",
-    "r_at_1", "r_at_2", "r_at_5",
-    "map_at_1_full", "map_at_1_relevant",
-    "diff_top", "diff_answer",
-    "rank_response_set", "r_at_1_set"],
+  "metrics": ["rank_response", "r_at_1", "r_at_2", "r_at_5"],
   "callbacks": ["ModelCheckpoint", "TensorBoard", "CSVLogger"]
 }
 

@@ -251,25 +251,20 @@ class DataReader(object):
                 context_response_data = data[i * batch_size:len(data)]
             context_data = [el["context"] for el in context_response_data]
             context = self.make_integers(context_data, "context")
-            response_data, y, y_set = self.create_rank_resp(context_response_data, data_type)
-            for el in zip(response_data, y, y_set):
+            response_data, y = self.create_rank_resp(context_response_data, data_type)
+            for el in zip(response_data, y):
                 response = self.make_integers(el[0], "response")
-                yield ([context, response], el[1], el[2])
+                yield ([context, response], el[1])
 
     def create_rank_resp(self, context_response_data, data_type="valid"):
         if data_type == "valid":
-            data = self.valid_data
             ranking_length = self.num_ranking_samples_valid
-            batch_size = self.val_batch_size
             sample_candidates = self.sample_candidates_valid
         elif data_type == "test":
-            data = self.test_data
             ranking_length = self.num_ranking_samples_test
-            batch_size = self.test_batch_size
             sample_candidates = self.sample_candidates_test
         if sample_candidates == "pool":
-            y_set = (ranking_length + 1) * [[np.arange(len(el["pos_pool"])) for el in data]]
-            y = (ranking_length + 1) * [np.zeros(batch_size)]
+            y = ranking_length * [np.array([len(el["pos_pool"]) for el in context_response_data])]
             response_data = []
             for i in range(len(context_response_data)):
                 pos_pool = context_response_data[i]["pos_pool"]
@@ -279,14 +274,13 @@ class DataReader(object):
             response_data = [response_data[i::ranking_length] for i in range(ranking_length)]
 
         elif sample_candidates == "global" or sample_candidates is None:
-            y_set = (ranking_length + 1) * [[np.arange(len(el["pos_pool"])) for el in context_response_data]]
-            y = (ranking_length + 1) * [np.zeros(batch_size)]
+            y = ranking_length * [np.array([len(el["pos_pool"]) for el in context_response_data])]
             response_data = []
             for i in range(len(context_response_data)):
-                pos_pool  = context_response_data[i]["pos_pool"]
+                pos_pool = context_response_data[i]["pos_pool"]
                 neg_pool = [el for el in list(self.label2response_vocab.keys())
                             if el not in context_response_data[i]["pos_pool"]]
                 response = pos_pool + neg_pool
                 response_data += response
             response_data = [response_data[i::ranking_length] for i in range(ranking_length)]
-        return response_data, y, y_set
+        return response_data, y
