@@ -57,8 +57,11 @@ class RankingModel(object):
             verbose=1)
         self.checkpoint.set_model(self.obj_model)
         self.csv_losses = callbacks.CSVLogger(self.save_path + '/losses.csv')
+        self.csv_losses.set_model(self.obj_model)
         self.csv_valid_metrics = callbacks.CSVLogger(self.save_path + '/valid_metrics.csv')
+        self.csv_valid_metrics.set_model(self.obj_model)
         self.csv_test_metrics = callbacks.CSVLogger(self.save_path + '/test_metrics.csv')
+        self.csv_test_metrics.set_model(self.obj_model)
 
         if os.path.isfile(self.load_path + "/model.hdf5"):
             print("The model file exists. Loading the model.")
