@@ -180,8 +180,8 @@ class RankingModel(object):
         self.csv_valid_metrics.on_train_begin()
         self.csv_test_metrics.on_train_begin()
 
-        self.evaluate(0, "valid")
-        self.evaluate(0, "test")
+        # self.evaluate(0, "valid")
+        # self.evaluate(0, "test")
         for i in range(1, self.epoch_num + 1):
             print("Epoch:", i)
             self.train(i)
