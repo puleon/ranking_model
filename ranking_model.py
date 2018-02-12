@@ -1,4 +1,4 @@
-from keras.layers import Input, LSTM, Lambda, Embedding
+from keras.layers import Input, LSTM, Lambda, Embedding, Add
 from keras.layers.merge import Dot
 from keras.models import Model
 from keras.layers.wrappers import Bidirectional
@@ -49,13 +49,15 @@ class RankingModel(object):
         self.obj_model.compile(loss=self.loss, optimizer=self.optimizer)
 
         self.checkpoint = callbacks.ModelCheckpoint(
-            filepath= self.save_path + "/model.hdf5",
+            filepath=self.save_path + "/model.hdf5",
             monitor="val_loss",
             save_best_only=True,
             save_weights_only=True,
             mode="min",
             verbose=1)
         self.checkpoint.set_model(self.obj_model)
+
+        self.obj_model.stop_training = False
         self.csv_losses = callbacks.CSVLogger(self.save_path + '/losses.csv')
         self.csv_losses.set_model(self.obj_model)
         self.csv_valid_metrics = callbacks.CSVLogger(self.save_path + '/valid_metrics.csv')
@@ -166,6 +168,7 @@ class RankingModel(object):
         score_negative = self.score_model([question, answer_negative])
         score_diff = Lambda(self.score_difference, output_shape=self.score_difference_output_shape,
                       name="score_diff")([score_positive, score_negative])
+        # score_diff = Add()([score_positive, -score_negative])
         model = Model([question, answer_positive, answer_negative], score_diff)
         return model
 
