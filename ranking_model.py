@@ -1,4 +1,4 @@
-from keras.layers import Input, LSTM, Lambda, Embedding, Add
+from keras.layers import Input, LSTM, Lambda, Embedding, Subtract
 from keras.layers.merge import Dot
 from keras.models import Model
 from keras.layers.wrappers import Bidirectional
@@ -74,16 +74,6 @@ class RankingModel(object):
             #self.score_model = self.obj_model.get_layer(name="score_model")
         self.fit_custom()
 
-    def score_difference(self, inputs):
-        """Define a function for a lambda layer of a model."""
-
-        return Lambda(lambda x: x[0] - x[1])(inputs)
-
-    def score_difference_output_shape(self, shapes):
-        """Define an output shape of a lambda layer of a model."""
-
-        return shapes[0]
-
     def max_pooling(self, input):
         """Define a function for a lambda layer of a model."""
 
@@ -103,7 +93,6 @@ class RankingModel(object):
                         trainable=True)(inp)
         model = Model(inputs=inp, outputs=out, name="word_embedding_model")
         return model
-
 
     def create_lstm_layer_max_pooling(self, input_dim):
         """Create a LSTM layer of a model."""
@@ -166,9 +155,7 @@ class RankingModel(object):
         self.score_model = self.maxpool_cosine_score_model(self.max_sequence_length)
         score_positive = self.score_model([question, answer_positive])
         score_negative = self.score_model([question, answer_negative])
-        score_diff = Lambda(self.score_difference, output_shape=self.score_difference_output_shape,
-                      name="score_diff")([score_positive, score_negative])
-        # score_diff = Add()([score_positive, -score_negative])
+        score_diff = Subtract()([score_positive, score_negative])
         model = Model([question, answer_positive, answer_negative], score_diff)
         return model
 
