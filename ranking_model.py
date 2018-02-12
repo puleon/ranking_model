@@ -71,7 +71,7 @@ class RankingModel(object):
         else:
             os.mkdir(self.save_path)
             copyfile('./config.json', self.save_path + '/config.json')
-            #self.score_model = self.obj_model.get_layer(name="score_model")
+            self.score_model = self.obj_model.get_layer(name="score_model")
         self.fit_custom()
 
     def max_pooling(self, input):
@@ -152,9 +152,9 @@ class RankingModel(object):
         question = Input(shape=(self.max_sequence_length,))
         answer_positive = Input(shape=(self.max_sequence_length,))
         answer_negative = Input(shape=(self.max_sequence_length,))
-        self.score_model = self.maxpool_cosine_score_model(self.max_sequence_length)
-        score_positive = self.score_model([question, answer_positive])
-        score_negative = self.score_model([question, answer_negative])
+        score_model = self.maxpool_cosine_score_model(self.max_sequence_length)
+        score_positive = score_model([question, answer_positive])
+        score_negative = score_model([question, answer_negative])
         score_diff = Subtract()([score_positive, score_negative])
         model = Model([question, answer_positive, answer_negative], score_diff)
         return model
