@@ -250,7 +250,7 @@ class DataReader(object):
             response_data, y = self.create_rank_resp(context_response_data, data_type)
             for el in zip(response_data, y):
                 response = self.make_integers(el[0], "response")
-                yield ([context, response], el[1])
+                yield ([context, response, response], el[1])
 
     def create_rank_resp(self, context_response_data, data_type="valid"):
         if data_type == "valid":

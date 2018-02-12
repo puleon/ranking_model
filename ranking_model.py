@@ -1,4 +1,4 @@
-from keras.layers import Input, LSTM, Lambda, Embedding, Subtract
+from keras.layers import Input, LSTM, Lambda, Embedding, Subtract, GlobalMaxPooling1D
 from keras.layers.merge import Dot
 from keras.models import Model
 from keras.layers.wrappers import Bidirectional
@@ -47,6 +47,8 @@ class RankingModel(object):
         self.optimizer = Adam(lr=self.learning_rate)
         self.obj_model = self.triplet_hinge_loss_model()
         self.obj_model.compile(loss=self.loss, optimizer=self.optimizer)
+        self.score_model = Model(inputs=self.obj_model.input,
+                                 outputs=self.obj_model.get_layer(name="score_model").get_output_at(0))
 
         self.checkpoint = callbacks.ModelCheckpoint(
             filepath=self.save_path + "/model.hdf5",
@@ -71,7 +73,7 @@ class RankingModel(object):
         else:
             os.mkdir(self.save_path)
             copyfile('./config.json', self.save_path + '/config.json')
-            self.score_model = self.obj_model.get_layer(name="score_model")
+
         self.fit_custom()
 
     def max_pooling(self, input):
@@ -84,79 +86,99 @@ class RankingModel(object):
 
         return shape[0], shape[2]
 
-    def create_embedding_layer(self, input_dim):
-        inp = Input(shape=(input_dim,))
-        out = Embedding(self.reader.embdict.index,
-                        self.embedding_dim,
-                        weights=[self.reader.embdict.embedding_matrix],
-                        input_length=input_dim,
-                        trainable=True)(inp)
-        model = Model(inputs=inp, outputs=out, name="word_embedding_model")
-        return model
+    def embedding_layer(self):
+        if self.type_of_weights == "shared":
+            out_a = Embedding(self.reader.embdict.index,
+                            self.embedding_dim,
+                            weights=[self.reader.embdict.embedding_matrix],
+                            input_length=self.max_sequence_length,
+                            trainable=True)
+            out_b = out_a
+        elif self.type_of_weights == "separate":
+            out_a = Embedding(self.reader.embdict.index,
+                            self.embedding_dim,
+                            weights=[self.reader.embdict.embedding_matrix],
+                            input_length=self.max_sequence_length,
+                            trainable=True)
+            out_b = Embedding(self.reader.embdict.index,
+                            self.embedding_dim,
+                            weights=[self.reader.embdict.embedding_matrix],
+                            input_length=self.max_sequence_length,
+                            trainable=True)
+        return out_a, out_b
 
-    def create_lstm_layer_max_pooling(self, input_dim):
+    def lstm_layer(self):
         """Create a LSTM layer of a model."""
         if self.pooling is None or self.pooling == "max":
             ret_seq = True
         elif self.pooling == "no":
             ret_seq = False
-        inp = Input(shape=(input_dim,  self.embedding_dim,))
         ker_in = glorot_uniform(seed=self.seed)
         rec_in = Orthogonal(seed=self.seed)
-        if self.recurrent == "bilstm" or self.recurrent is None:
-            out = Bidirectional(LSTM(self.hidden_dim,
-                                input_shape=(input_dim, self.embedding_dim,),
-                                kernel_initializer=ker_in,
-                                recurrent_initializer=rec_in,
-                                return_sequences=ret_seq), merge_mode='concat')(inp)
-        elif self.recurrent == "lstm":
-            out = LSTM(self.hidden_dim,
-                       input_shape=(input_dim, self.embedding_dim,),
-                       kernel_initializer=ker_in,
-                       recurrent_initializer=rec_in,
-                       return_sequences=ret_seq)(inp)
-        model = Model(inputs=inp, outputs=out)
-        return model
-
-    def maxpool_cosine_score_model(self, input_dim):
-        """Define a model with bi-LSTM layers and without attention."""
-
-        input_a = Input(shape=(input_dim,))
-        input_b = Input(shape=(input_dim,))
         if self.type_of_weights == "shared":
-            embedding_layer = self.create_embedding_layer(self.max_sequence_length)
-            emb_a = embedding_layer(input_a)
-            emb_b = embedding_layer(input_b)
-            lstm_layer = self.create_lstm_layer_max_pooling(self.max_sequence_length)
-            lstm_a = lstm_layer(emb_a)
-            lstm_b = lstm_layer(emb_b)
+            if self.recurrent == "bilstm" or self.recurrent is None:
+                out_a = Bidirectional(LSTM(self.hidden_dim,
+                                    input_shape=(self.max_sequence_length, self.embedding_dim,),
+                                    kernel_initializer=ker_in,
+                                    recurrent_initializer=rec_in,
+                                    return_sequences=ret_seq), merge_mode='concat')
+                out_b = out_a
+            elif self.recurrent == "lstm":
+                out_a = LSTM(self.hidden_dim,
+                           input_shape=(self.max_sequence_length, self.embedding_dim,),
+                           kernel_initializer=ker_in,
+                           recurrent_initializer=rec_in,
+                           return_sequences=ret_seq)
+            out_b = out_a
         elif self.type_of_weights == "separate":
-            embedding_layer_a = self.create_embedding_layer(self.max_sequence_length)
-            embedding_layer_b = self.create_embedding_layer(self.max_sequence_length)
-            emb_a = embedding_layer_a(input_a)
-            emb_b = embedding_layer_b(input_b)
-            lstm_layer_a = self.create_lstm_layer_max_pooling(self.max_sequence_length)
-            lstm_layer_b = self.create_lstm_layer_max_pooling(self.max_sequence_length)
-            lstm_a = lstm_layer_a(emb_a)
-            lstm_b = lstm_layer_b(emb_b)
-        if self.pooling is None or self.pooling == "max":
-            lstm_a = Lambda(self.max_pooling, output_shape=self.max_pooling_output_shape,
-                                name="max_pooling_a")(lstm_a)
-            lstm_b = Lambda(self.max_pooling, output_shape=self.max_pooling_output_shape,
-                                name="max_pooling_b")(lstm_b)
-        cosine = Dot(normalize=True, axes=-1)([lstm_a, lstm_b])
-        model = Model([input_a, input_b], cosine, name="score_model")
-        return model
+            if self.recurrent == "bilstm" or self.recurrent is None:
+                out_a = Bidirectional(LSTM(self.hidden_dim,
+                                    input_shape=(self.max_sequence_length, self.embedding_dim,),
+                                    kernel_initializer=ker_in,
+                                    recurrent_initializer=rec_in,
+                                    return_sequences=ret_seq), merge_mode='concat')
+                out_b = Bidirectional(LSTM(self.hidden_dim,
+                                    input_shape=(self.max_sequence_length, self.embedding_dim,),
+                                    kernel_initializer=ker_in,
+                                    recurrent_initializer=rec_in,
+                                    return_sequences=ret_seq), merge_mode='concat')
+            elif self.recurrent == "lstm":
+                out_a = LSTM(self.hidden_dim,
+                           input_shape=(self.max_sequence_length, self.embedding_dim,),
+                           kernel_initializer=ker_in,
+                           recurrent_initializer=rec_in,
+                           return_sequences=ret_seq)
+                out_b = LSTM(self.hidden_dim,
+                           input_shape=(self.max_sequence_length, self.embedding_dim,),
+                           kernel_initializer=ker_in,
+                           recurrent_initializer=rec_in,
+                           return_sequences=ret_seq)
+        return out_a, out_b
 
     def triplet_hinge_loss_model(self):
-        question = Input(shape=(self.max_sequence_length,))
-        answer_positive = Input(shape=(self.max_sequence_length,))
-        answer_negative = Input(shape=(self.max_sequence_length,))
-        score_model = self.maxpool_cosine_score_model(self.max_sequence_length)
-        score_positive = score_model([question, answer_positive])
-        score_negative = score_model([question, answer_negative])
-        score_diff = Subtract()([score_positive, score_negative])
-        model = Model([question, answer_positive, answer_negative], score_diff)
+        context = Input(shape=(self.max_sequence_length,))
+        response_positive = Input(shape=(self.max_sequence_length,))
+        response_negative = Input(shape=(self.max_sequence_length,))
+        emb_layer_a, emb_layer_b = self.embedding_layer()
+        emb_c = emb_layer_a(context)
+        emb_rp = emb_layer_b(response_positive)
+        emb_rn = emb_layer_b(response_negative)
+        lstm_layer_a, lstm_layer_b = self.lstm_layer()
+        lstm_c = lstm_layer_a(emb_c)
+        lstm_rp = lstm_layer_b(emb_rp)
+        lstm_rn = lstm_layer_b(emb_rn)
+        if self.pooling is None or self.pooling == "max":
+            pooling_layer = Lambda(self.max_pooling,
+                                   output_shape=self.max_pooling_output_shape,
+                                   name="max_pooling_a")
+            lstm_c = pooling_layer(lstm_c)
+            lstm_rp = pooling_layer(lstm_rp)
+            lstm_rn = pooling_layer(lstm_rn)
+        cosine_layer = Dot(normalize=True, axes=-1, name="score_model")
+        cosine_pos = cosine_layer([lstm_c, lstm_rp])
+        cosine_neg = cosine_layer([lstm_c, lstm_rn])
+        score_diff = Subtract()([cosine_pos, cosine_neg])
+        model = Model([context, response_positive, response_negative], score_diff)
         return model
 
     def triplet_loss(self, y_true, y_pred):
@@ -173,8 +195,8 @@ class RankingModel(object):
         self.csv_valid_metrics.on_train_begin()
         self.csv_test_metrics.on_train_begin()
 
-        # self.evaluate(0, "valid")
-        # self.evaluate(0, "test")
+        self.evaluate(0, "valid")
+        self.evaluate(0, "test")
         for i in range(1, self.epoch_num + 1):
             print("Epoch:", i)
             self.train(i)
