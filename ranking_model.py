@@ -1,4 +1,4 @@
-from keras.layers import Input, LSTM, Lambda, Embedding, Subtract, GlobalMaxPooling1D
+from keras.layers import Input, LSTM, Embedding, Subtract, GlobalMaxPooling1D
 from keras.layers.merge import Dot
 from keras.models import Model
 from keras.layers.wrappers import Bidirectional
@@ -70,21 +70,13 @@ class RankingModel(object):
         if os.path.isfile(self.load_path + "/model.hdf5"):
             print("The model file exists. Loading the model.")
             self.obj_model.load_weights(self.load_path + "/model.hdf5")
+            #self.obj_model = load_model(self.load_path + "/model.hdf5")
+
         else:
             os.mkdir(self.save_path)
             copyfile('./config.json', self.save_path + '/config.json')
 
         self.fit_custom()
-
-    def max_pooling(self, input):
-        """Define a function for a lambda layer of a model."""
-
-        return K.max(input, axis=1, keepdims=False)
-
-    def max_pooling_output_shape(self, shape):
-        """Define an output shape of a lambda layer of a model."""
-
-        return shape[0], shape[2]
 
     def embedding_layer(self):
         if self.type_of_weights == "shared":
@@ -168,9 +160,7 @@ class RankingModel(object):
         lstm_rp = lstm_layer_b(emb_rp)
         lstm_rn = lstm_layer_b(emb_rn)
         if self.pooling is None or self.pooling == "max":
-            pooling_layer = Lambda(self.max_pooling,
-                                   output_shape=self.max_pooling_output_shape,
-                                   name="max_pooling_a")
+            pooling_layer = GlobalMaxPooling1D()
             lstm_c = pooling_layer(lstm_c)
             lstm_rp = pooling_layer(lstm_rp)
             lstm_rn = pooling_layer(lstm_rn)
