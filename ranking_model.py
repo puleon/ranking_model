@@ -1,30 +1,27 @@
-from keras.layers import Input, LSTM, Dropout, Lambda, Dense, Activation, Embedding
+from keras.layers import Input, LSTM, Lambda, Embedding
 from keras.layers.merge import Dot
 from keras.models import Model
 from keras.layers.wrappers import Bidirectional
-from keras.optimizers import SGD, Adam
+from keras.optimizers import Adam
 from keras.initializers import glorot_uniform, Orthogonal
 from keras import backend as K
-from keras import losses
 from keras import callbacks
 from keras.models import load_model
 import os
 import numpy as np
 from data_reader import DataReader
-import custom_callbacks
-import custom_layers
 import custom_metrics
-import json
+from shutil import copyfile
 
 class RankingModel(object):
 
     def __init__(self, params_dict):
         self.run_type = params_dict.get("run_type")
         self.device_number = params_dict["device_number"]
-        self.model_file = params_dict.get("model_file")
+        self.load_path = params_dict.get("load_path")
         self.pooling = params_dict.get("pooling")
         self.recurrent = params_dict.get("recurrent")
-        self.save_folder = params_dict['save_folder']
+        self.save_path = params_dict['save_path']
         self.max_sequence_length = params_dict['max_sequence_length']
         self.embedding_dim = params_dict['embedding_dim']
         self.seed = params_dict['seed']
@@ -34,67 +31,43 @@ class RankingModel(object):
         self.type_of_weights = params_dict['type_of_weights']
         self.epoch_num = params_dict["epoch_num"]
         self.epoch_num_valid = params_dict.get("epoch_num_valid")
-        self.metrics = params_dict["metrics"]
+
+        self.metrics = ["rank_response", "r_at_1", "r_at_2", "r_at_5"]
+        self.metrics_functions = [custom_metrics.rank_response,
+                                  custom_metrics.r_at_1,
+                                  custom_metrics.r_at_2,
+                                  custom_metrics.r_at_5]
 
         if self.epoch_num_valid is None:
             self.epoch_num_valid = 1
 
-        self.score_model_by_name = None
-        self.score_model = None
-        self.reader = DataReader(self.score_model, params_dict)
+        self.reader = DataReader(params_dict)
 
         self.loss = self.triplet_loss
-        self.obj_model = self.triplet_hinge_loss_model()
         self.optimizer = Adam(lr=self.learning_rate)
+        self.obj_model = self.triplet_hinge_loss_model()
+        self.obj_model.compile(loss=self.loss, optimizer=self.optimizer)
 
-        if self.run_type == "train" or self.run_type is None:
-            self.compile()
-            self.score_model_by_name = self.obj_model.get_layer(name="score_model")
-            self.callbacks = []
-            cb = custom_callbacks.MetricsCallback(self.reader, self.obj_model,
-                                                  self.score_model, self.score_model_by_name, params_dict)
-            self.callbacks.append(cb)
-            for el in params_dict["callbacks"]:
-                if el == "ModelCheckpoint":
-                    folder_name = self.save_folder + "/weights"
-                    os.mkdir(folder_name)
-                    mc = callbacks.ModelCheckpoint(filepath=folder_name + "/weights.{epoch:02d}-{loss:.2f}.hdf5",
-                                          monitor="val_loss",
-                                          save_best_only=True,
-                                          mode="min",
-                                          verbose=1)
-                    self.callbacks.append(mc)
-            #     if el == "EarlyStopping":
-            #         es = callbacks.EarlyStopping(monitor="val_loss", patience=19, mode="min")
-            #         self.callbacks.append(es)
-                if el == "TensorBoard":
-                    folder_name = self.save_folder + "/logs"
-                    tb = callbacks.TensorBoard(log_dir=folder_name)
-                    self.callbacks.append(tb)
-            #     if el == "ReduceLROnPlateau":
-            #         rop = callbacks.ReduceLROnPlateau(monitor="val_loss", factor=0.1, patience=10, mode="max")
-            #         self.callbacks.append(rop)
-                if el == "CSVLogger":
+        self.checkpoint = callbacks.ModelCheckpoint(
+            filepath= self.save_path + "/model.hdf5",
+            monitor="val_loss",
+            save_best_only=True,
+            save_weights_only=True,
+            mode="min",
+            verbose=1)
+        self.checkpoint.set_model(self.obj_model)
+        self.csv_losses = callbacks.CSVLogger(self.save_path + '/losses.csv')
+        self.csv_valid_metrics = callbacks.CSVLogger(self.save_path + '/valid_metrics.csv')
+        self.csv_test_metrics = callbacks.CSVLogger(self.save_path + '/test_metrics.csv')
 
-                    scvl = callbacks.CSVLogger(self.save_folder + '/training.log')
-                    self.callbacks.append(scvl)
-
-            self.fit_custom()
-
-        elif self.run_type == "infer":
-            self.compile()
-            self.load()
-            self.score_model = self.obj_model.get_layer(name="score_model")
-            self.score_model_by_name = self.obj_model.get_layer(name="score_model")
-            # cb = custom_callbacks.MetricsCallback(self.reader, self.obj_model,
-            #                                       self.score_model, self.score_model_by_name,
-            #                                       params_dict)
-            #cb.on_train_begin()
-            #cb.on_epoch_begin(1)
-            self.init_metrics()
-            self.evaluate("valid")
-            self.evaluate("test")
-            self.save_metrics()
+        if os.path.isfile(self.load_path + "/model.hdf5"):
+            print("The model file exists. Loading the model.")
+            self.obj_model.load_weights(self.load_path + "/model.hdf5")
+        else:
+            os.mkdir(self.save_path)
+            copyfile('./config.json', self.save_path + '/config.json')
+            #self.score_model = self.obj_model.get_layer(name="score_model")
+        self.fit_custom()
 
     def score_difference(self, inputs):
         """Define a function for a lambda layer of a model."""
@@ -198,39 +171,30 @@ class RankingModel(object):
 
         return K.mean(K.maximum(self.margin - y_pred, 0.), axis=-1)
 
-
-    def compile(self):
-        self.obj_model.compile(loss=self.loss,
-                               optimizer=self.optimizer)
-
-    def fit(self):
-        self.obj_model.fit_generator(generator=self.reader.batch_generator_train(),
-                                     steps_per_epoch=self.reader.train_steps,
-                                     epochs=self.epoch_num,
-                                     validation_data=self.reader.batch_generator_train("valid"),
-                                     validation_steps=self.reader.valid_steps_train,
-                                     callbacks=self.callbacks)
-
     def fit_custom(self):
         print("Node:", self.device_number)
-        print("Save folder:", self.save_folder)
-        self.reader.get_model(self.score_model)
-        self.init_metrics()
-        # self.evaluate(0, "valid")
-        # self.evaluate(0, "test")
-        self.save_metrics()
-        self.save_losses()
+        print("Save path:", self.save_path)
+
+        self.checkpoint.on_train_begin()
+        self.csv_losses.on_train_begin()
+        self.csv_valid_metrics.on_train_begin()
+        self.csv_test_metrics.on_train_begin()
+
+        self.evaluate(0, "valid")
+        self.evaluate(0, "test")
         for i in range(1, self.epoch_num + 1):
             print("Epoch:", i)
-            self.train()
-            self.save_losses()
+            self.train(i)
             if i % self.epoch_num_valid == 0:
                 self.evaluate(i, "valid")
                 self.evaluate(i, "test")
-                self.save_metrics()
-                self.save_weights(i)
 
-    def train(self):
+        self.checkpoint.on_train_end()
+        self.csv_losses.on_train_end()
+        self.csv_test_metrics.on_train_end()
+        self.csv_valid_metrics.on_train_end()
+
+    def train(self, epoch):
         print("Train:")
         losses = []
         generator_train = self.reader.batch_generator_train()
@@ -238,7 +202,7 @@ class RankingModel(object):
             loss = self.obj_model.train_on_batch(x=el[0], y=el[1])
             losses.append(loss)
             print("loss:", loss)
-        self.losses["loss"].append(np.mean(np.asarray(losses).astype(float)) if len(losses) > 0 else -1.0)
+        mean_loss = np.mean(np.asarray(losses).astype(float)) if len(losses) > 0 else -1.0
 
         print("Validation:")
         val_losses = []
@@ -247,7 +211,10 @@ class RankingModel(object):
             val_loss = self.obj_model.test_on_batch(x=el[0], y=el[1])
             val_losses.append(val_loss)
             print("val_loss:", val_loss)
-        self.losses["val_loss"].append(np.mean(np.asarray(val_losses).astype(float)) if len(val_losses) > 0 else -1.0)
+        mean_val_loss = np.mean(np.asarray(val_losses).astype(float)) if len(val_losses) > 0 else -1.0
+
+        self.checkpoint.on_epoch_end(epoch, {"loss": mean_loss, "val_loss": mean_val_loss})
+        self.csv_losses.on_epoch_end(epoch, {"loss": mean_loss, "val_loss": mean_val_loss})
 
     def evaluate(self, epoch, eval_type="valid"):
         if eval_type == "valid":
@@ -259,8 +226,7 @@ class RankingModel(object):
             num_samples = self.reader.num_ranking_samples_test
             generator = self.reader.batch_generator_test("test")
 
-        metrics_buff = {}
-        y_set = []
+        metrics_logs = {}
         y_true = []
         y_pred = []
         for el in generator:
@@ -272,71 +238,13 @@ class RankingModel(object):
         y_pred = np.vstack([np.hstack(y_pred[i * num_samples:
                            (i + 1) * num_samples]) for i in range(steps)])
 
-        metrics_buff["epoch"] = epoch
         for i in range(len(self.metrics)):
             metric_name = self.metrics[i]
-            if metric_name != "rank_response_set" and metric_name != "r_at_1_set":
-                metric_value = self.metrics_functions[i](y_true, y_pred)
-            else:
-                metric_value = self.metrics_functions[i](y_set, y_pred)
-            metrics_buff[metric_name] = metric_value
+            metric_value = self.metrics_functions[i](y_true, y_pred)
+            metrics_logs[metric_name] = metric_value
             print(metric_name + ':', metric_value)
 
         if eval_type == "valid":
-            self.val_metrics["epoch"].append(metrics_buff["epoch"])
-            for el in self.metrics:
-                self.val_metrics[el].append(metrics_buff[el])
-            print(self.val_metrics)
+            self.csv_valid_metrics.on_epoch_end(epoch, metrics_logs)
         elif eval_type == "test":
-            self.test_metrics["epoch"].append(metrics_buff["epoch"])
-            for el in self.metrics:
-                self.test_metrics[el].append(metrics_buff[el])
-            print(self.test_metrics)
-
-    def init_metrics(self):
-        self.metrics_functions = []
-        self.val_metrics = {}
-        self.test_metrics = {}
-        self.losses = {"loss": [], "val_loss": []}
-        for el in self.metrics:
-            self.val_metrics["epoch"] = []
-            self.test_metrics["epoch"] = []
-            if el == "rank_response":
-                self.metrics_functions.append(custom_metrics.rank_response)
-                self.val_metrics[el] = []
-                self.test_metrics[el] = []
-            if el == "r_at_1":
-                self.metrics_functions.append(custom_metrics.r_at_1)
-                self.val_metrics[el] = []
-                self.test_metrics[el] = []
-            if el == "r_at_2":
-                self.metrics_functions.append(custom_metrics.r_at_2)
-                self.val_metrics[el] = []
-                self.test_metrics[el] = []
-            if el == "r_at_5":
-                self.metrics_functions.append(custom_metrics.r_at_5)
-                self.val_metrics[el] = []
-                self.test_metrics[el] = []
-
-    def save_losses(self):
-        with open(self.save_folder + '/losses.json', 'w') as outfile:
-            json.dump(self.losses, outfile)
-
-    def save_metrics(self):
-        with open(self.save_folder + '/valid_metrics.json', 'w') as outfile:
-            json.dump(self.val_metrics, outfile)
-        with open(self.save_folder + '/test_metrics.json', 'w') as outfile:
-            json.dump(self.test_metrics, outfile)
-
-    def save_weights(self, epoch):
-        self.obj_model.save_weights(self.save_folder + '/obj_model_' + str(epoch) + '.h5')
-        self.score_model_by_name.save_weights(self.save_folder + '/score_model_by_name_' + str(epoch) + '.h5')
-        self.score_model.save_weights(self.save_folder + '/score_model_' + str(epoch) + '.h5')
-
-    def load(self):
-        if self.model_file is not None and os.path.isfile(self.model_file):
-            #self.obj_model = load_model(self.model_file)
-            self.obj_model.load_weights(self.model_file)
-        else:
-            print("The model_file parameter is not set or is incorrect. Exit.")
-            exit()
+            self.csv_test_metrics.on_epoch_end(epoch, metrics_logs)

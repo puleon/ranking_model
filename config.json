@@ -1,9 +1,10 @@
 {
   "device_number": "0",
+  "load_path": "./rm",
   "raw_dataset_path": "./build/insurance_v1/",
-  "save_folder": "./rm",
+  "save_path": "./rm",
   "embeddings": "word2vec",
-  "embeddings_model_file": "/home/pugachev/models_word2vec/insurance_v1_word2vec",
+  "embeddings_model_file": "/home/leonid/models_word2vec/insurance_v1_word2vec",
   "embeddings_dict": "insurance_v1_w2v.emb",
   "embedding_dim": 100,
   "max_sequence_length": 200,
@@ -27,8 +28,6 @@
   "dataset_name": "insurance_v1",
   "type_of_weights": "shared",
   "recurrent": "bilstm",
-  "pooling": "max",
-  "metrics": ["rank_response", "r_at_1", "r_at_2", "r_at_5"],
-  "callbacks": ["ModelCheckpoint", "TensorBoard", "CSVLogger"]
+  "pooling": "max"
 }
 

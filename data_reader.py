@@ -11,8 +11,7 @@ from embeddings_dict import EmbeddingsDict
 
 class DataReader(object):
 
-    def __init__(self, score_model, params_dict):
-        self.score_model = score_model
+    def __init__(self, params_dict):
         self.margin = params_dict['margin']
         self.sample_candidates = params_dict.get('sample_candidates')
         self.sample_candidates_valid = params_dict.get('sample_candidates_valid')
@@ -187,9 +186,6 @@ class DataReader(object):
                                       padding=self.padding, truncating=self.truncating)
         return integers_list
 
-    def get_model(self, model):
-        self.score_model = model
-
     def batch_generator_train(self, data_type="train"):
         y0 = np.zeros(self.batch_size)
         if data_type == "train":
@@ -234,13 +230,13 @@ class DataReader(object):
 
     def batch_generator_test(self, data_type="valid"):
         if data_type == "valid":
-            print("valid generator")
+            print("Ranking validation:")
             data = self.valid_data
             num_steps = self.valid_steps
             batch_size = self.val_batch_size
         else:
             if data_type == "test":
-                print("test generator")
+                print("Ranking test:")
                 data = self.test_data
                 num_steps = self.test_steps
                 batch_size = self.test_batch_size
