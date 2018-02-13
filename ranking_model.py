@@ -85,7 +85,7 @@ class RankingModel(object):
                             weights=[self.reader.embdict.embedding_matrix],
                             input_length=self.max_sequence_length,
                             trainable=True)
-            out_b = out_a
+            return out_a, out_a
         elif self.type_of_weights == "separate":
             out_a = Embedding(self.reader.embdict.index,
                             self.embedding_dim,
@@ -97,7 +97,7 @@ class RankingModel(object):
                             weights=[self.reader.embdict.embedding_matrix],
                             input_length=self.max_sequence_length,
                             trainable=True)
-        return out_a, out_b
+            return out_a, out_b
 
     def lstm_layer(self):
         """Create a LSTM layer of a model."""
@@ -114,14 +114,13 @@ class RankingModel(object):
                                     kernel_initializer=ker_in,
                                     recurrent_initializer=rec_in,
                                     return_sequences=ret_seq), merge_mode='concat')
-                out_b = out_a
             elif self.recurrent == "lstm":
                 out_a = LSTM(self.hidden_dim,
                            input_shape=(self.max_sequence_length, self.embedding_dim,),
                            kernel_initializer=ker_in,
                            recurrent_initializer=rec_in,
                            return_sequences=ret_seq)
-            out_b = out_a
+            return out_a, out_a
         elif self.type_of_weights == "separate":
             if self.recurrent == "bilstm" or self.recurrent is None:
                 out_a = Bidirectional(LSTM(self.hidden_dim,
@@ -145,7 +144,7 @@ class RankingModel(object):
                            kernel_initializer=ker_in,
                            recurrent_initializer=rec_in,
                            return_sequences=ret_seq)
-        return out_a, out_b
+            return out_a, out_b
 
     def triplet_hinge_loss_model(self):
         context = Input(shape=(self.max_sequence_length,))

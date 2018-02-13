@@ -1,9 +1,6 @@
 import numpy as np
-import ast
-import csv
 import nltk
 from nltk.tokenize import sent_tokenize, word_tokenize
-import json
 from keras.preprocessing.sequence import pad_sequences
 
 from embeddings_dict import EmbeddingsDict
